@@ -1,12 +1,20 @@
-# Está em uma distribuição linux?
-- Temos a versão compilada do software, baixe e execute!
-- [Clique aqui](https://github.com/Hsyst/hps/releases)
+# 🧩 Hsyst Peer-to-Peer Service (HPS)
 
-# AVISO
-- Este projeto não é open-source, verifique a [licença](https://github.com/Hsyst/hps/blob/main/LICENSE.md) antes de executar ou replicar
+# Está em uma distribuição Linux?
+
+* Temos a versão compilada do software, baixe e execute!
+* [Clique aqui](https://github.com/Hsyst/hps/releases)
+
+# ⚠️ AVISO
+
+* Este projeto **não é open-source**, verifique a [licença](https://github.com/Hsyst/hps/blob/main/LICENSE.md) antes de executar ou replicar.
 
 # Manual Técnico
-- Quer saber a parte mais profunda do projeto? [Clique Aqui](https://github.com/Hsyst/hps/blob/main/tecnico.md)
+
+* Quer saber a parte mais profunda do projeto? [Clique Aqui](https://github.com/Hsyst/hps/blob/main/tecnico.md)
+
+---
+
 # 🧭 Manual do Usuário — Hsyst Peer-to-Peer Service (HPS)
 
 ## Introdução
@@ -35,6 +43,8 @@ O **HPS Browser** é uma aplicação gráfica (interface em **Tkinter**) que atu
 * Reporte conteúdos irregulares;
 * Sincronize dados com múltiplos servidores HPS.
 
+---
+
 ### 🔹 Requisitos
 
 * Python **3.10 ou superior**
@@ -44,6 +54,8 @@ O **HPS Browser** é uma aplicação gráfica (interface em **Tkinter**) que atu
   pip install aiohttp python-socketio cryptography pillow qrcode
   ```
 * Sistema operacional compatível com `tkinter` (Windows, Linux, macOS).
+
+---
 
 ### 🔹 Iniciando o Navegador
 
@@ -203,19 +215,19 @@ Type "help" for commands
 
 #### 🧾 Lista de Comandos
 
-| Comando                                  | Descrição                                                       |                     |                                |
-| ---------------------------------------- | --------------------------------------------------------------- | ------------------- | ------------------------------ |
-| `online_users`                           | Lista usuários online e autenticados                            |                     |                                |
-| `ban_user <username> <duração> <motivo>` | Bane um usuário temporariamente                                 |                     |                                |
-| `reputation <username> [nova_reputação]` | Consulta ou altera a reputação                                  |                     |                                |
-| `server_stats`                           | Mostra estatísticas do servidor (usuários, conteúdo, DNS, etc.) |                     |                                |
-| `content_stats`                          | Lista estatísticas por tipo MIME (imagens, vídeos, etc.)        |                     |                                |
-| `node_stats`                             | Exibe estatísticas de nós online e reputações médias            |                     |                                |
-| `list_reports`                           | Lista reportes pendentes de moderação                           |                     |                                |
-| `resolve_report <id>`                    | warn                                                            | `[ban] ou [ignore]` | Resolve um reporte manualmente |
-| `sync_network`                           | Inicia sincronização com outros servidores conhecidos           |                     |                                |
-| `exit`                                   | Encerra o servidor com segurança                                |                     |                                |
-| `help`                                   | Exibe lista de comandos disponíveis                             |                     |                                |
+| Comando                                  | Descrição                                                       |          |                                |
+| ---------------------------------------- | --------------------------------------------------------------- | ----------------------- | ------------------------------ |
+| `online_users`                           | Lista usuários online e autenticados                            |                         |                                |
+| `ban_user <username> <duração> <motivo>` | Bane um usuário temporariamente                                 |                         |                                |
+| `reputation <username> [nova_reputação]` | Consulta ou altera a reputação                                  |                         |                                |
+| `server_stats`                           | Mostra estatísticas do servidor (usuários, conteúdo, DNS, etc.) |                         |                                |
+| `content_stats`                          | Lista estatísticas por tipo MIME (imagens, vídeos, etc.)        |                         |                                |
+| `node_stats`                             | Exibe estatísticas de nós online e reputações médias            |                         |                                |
+| `list_reports`                           | Lista reportes pendentes de moderação                           |                         |                                |
+| `resolve_report <id>`                    | Resolve os reports realizados                                   | `[ban, warn ou ignore]` | Resolve um reporte manualmente |
+| `sync_network`                           | Inicia sincronização com outros servidores conhecidos           |                         |                                |
+| `exit`                                   | Encerra o servidor com segurança                                |                         |                                |
+| `help`                                   | Exibe lista de comandos disponíveis                             |                         |                                |
 
 ---
 
@@ -226,18 +238,64 @@ O HPS Server suporta dois modos de operação segura:
 #### 🔸 Certificado Autoassinado
 
 Ideal para ambientes de teste ou uso pessoal.
+Gere o certificado com:
 
-* Gere o certificado com:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
+```
 
-  ```bash
-  openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
-  ```
-* Execute o servidor apontando para os arquivos `.crt` e `.key`.
+Em seguida, execute o servidor apontando para os arquivos `.crt` e `.key`.
 
 #### 🔸 Certificado Let’s Encrypt
 
 Para ambientes públicos (HTTPS válido e confiável).
 O certificado deve ser gerado e renovado externamente (ex.: via `certbot`).
+
+---
+
+### ⚙️ 🔹 **Sincronização entre Servidores (HTTP + TLS Autoassinado)**
+
+O sistema HPS utiliza um modelo híbrido, no qual **servidores TLS autoassinados** e **servidores HTTP** coexistem para garantir redundância, acessibilidade e independência de autoridades externas.
+
+* Servidores **com certificados autoassinados** **não conseguem se sincronizar diretamente via HTTPS** com outros servidores.
+* Por esse motivo, a arquitetura **recomenda rodar duas instâncias do mesmo servidor**:
+
+  * Uma **com TLS ativo** (para usuários do navegador);
+  * Outra **sem TLS (HTTP)** (para sincronização entre servidores).
+
+Ambos compartilham o mesmo banco de dados e estrutura de arquivos, garantindo consistência completa.
+
+#### ✅ Estrutura Recomendada
+
+| Servidor        | Porta      | Função                               | Acesso |
+| --------------- | ---------- | ------------------------------------ | ------ |
+| `Servidor TLS`  | 443 / 8443 | Atendimento ao público (navegadores) | HTTPS  |
+| `Servidor HTTP` | 8080       | Sincronização interna entre nós      | HTTP   |
+
+#### 🔁 Comportamento de Sincronização
+
+* Arquivos e registros **DDNS** são propagados **somente entre servidores**, **nunca por clientes**.
+* O servidor TLS pode solicitar dados ao servidor HTTP se um conteúdo solicitado **não for encontrado** localmente.
+* Assim, usuários conectados ao servidor TLS podem acessar arquivos recém-propagados da rede HTTP.
+* O servidor HTTP, por sua vez, sincroniza com outros nós, propagando o conteúdo de volta ao servidor TLS.
+
+💡 **Em resumo:**
+
+> O servidor HTTP age como uma “espinha dorsal” da rede, propagando dados entre servidores.
+> O servidor TLS autoassinado é a “porta de entrada” segura para usuários comuns.
+
+#### 🌐 Independência de Autoridades Certificadoras (CA)
+
+A rede Hsyst **não depende de CAs confiáveis externas**.
+Toda autenticação entre servidores é feita com **hashes de chave pública** — não com certificados verificados por terceiros.
+
+Como prática oficial:
+
+* Use **um servidor sem HTTPS** para sincronização federada;
+* Use **um servidor TLS autoassinado** para o público;
+* Ou, caso prefira simplificar, utilize um **certificado válido** (Let’s Encrypt).
+
+Essa abordagem mantém a integridade criptográfica da rede, ao mesmo tempo em que **preserva a autonomia** e **independência técnica**.
 
 ---
 
@@ -248,7 +306,20 @@ O modelo adotado combina **servidores federados** e **clientes colaborativos**, 
 * Alta **resiliência** (servidores sincronizam entre si);
 * **Autonomia local** (cada servidor pode operar isoladamente);
 * **Verificação de conteúdo distribuída**;
-* **Escalabilidade horizontal** (qualquer usuário pode hospedar um nó adicional).
+* **Escalabilidade horizontal** (qualquer usuário pode hospedar um nó adicional);
+* **Independência total de CAs externas**.
+
+---
+
+### 🔹 Recomportamento Esperado do Usuário
+
+Ao utilizar o navegador conectado a um servidor TLS autoassinado:
+
+* Caso o conteúdo requisitado **não esteja disponível** naquele servidor, o usuário deve conectar-se ao **servidor HTTP equivalente**, se conhecido.
+* Esse servidor HTTP buscará o arquivo na rede, sincronizando-o automaticamente com o servidor TLS.
+* Assim, o conteúdo passa a estar disponível para **todos os usuários da camada TLS**.
+
+📌 *Ambas as instâncias são o mesmo servidor — apenas executadas duas vezes, em modos diferentes (com e sem TLS).*
 
 ---
 
@@ -259,28 +330,6 @@ O modelo adotado combina **servidores federados** e **clientes colaborativos**, 
 * **Proof-of-Work adaptativo** por tipo de ação (login, upload, DNS, reporte);
 * **Sincronização periódica** com outros nós (`sync_with_network`);
 * **Registro detalhado de logs e conexões**.
-
----
-
-### 🔹 Finalização e Parada Segura
-
-Para encerrar o servidor corretamente:
-
-```
-(hps-admin) exit
-```
-
-Isso garante que todos os processos assíncronos e sincronizações em andamento sejam finalizados antes do desligamento.
-
----
-
-### 🔹 Recomendações de Operação
-
-* Sempre mantenha uma cópia de segurança do banco `hps_server.db`.
-* Se possível, use certificados TLS válidos (Let’s Encrypt) para conexões externas.
-* Evite modificar diretamente os arquivos `.dat` em `hps_files/`.
-* Revise periodicamente reputações e reportes via console administrativo.
-* Caso utilize múltiplos servidores, sincronize-os manualmente ao menos uma vez por semana com `sync_network`.
 
 ---
 
@@ -301,4 +350,4 @@ Os registros são impressos no terminal e podem ser redirecionados para arquivo.
 O **HPS Server** e o **HPS Browser** operam conjuntamente para formar a rede Hsyst —
 um ecossistema descentralizado de dados, reputações e assinaturas digitais.
 
-O uso responsável e ético da tecnologia garante a integridade e longevidade da rede.
+O uso responsável e ético da tecnologia garante a integridade, privacidade e longevidade da rede.
