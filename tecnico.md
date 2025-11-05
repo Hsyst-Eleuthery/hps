@@ -24,8 +24,8 @@ O sistema é composto por dois componentes fundamentais:
 A arquitetura do HPS segue um modelo **híbrido federado**:
 
 * **Servidores** são responsáveis por armazenar, validar e propagar conteúdo;
-* **Clientes** (navegadores) interagem com servidores confiáveis, mas **não atuam como retransmissores de dados**;
-* A propagação de conteúdo e registros DNS descentralizados ocorre **exclusivamente entre servidores**.
+* **Clientes** (navegadores) interagem com servidores confiáveis, mas **e atuam como retransmissores de dados (mas não de DDNS)**;
+* A propagação de registros DNS descentralizados ocorre **exclusivamente entre servidores**, porém, os conteúdos são transmitidos pelos clientes, ou seja, caso o servidor não tenha, ele pode pedir aos clientes que tem aquele arquivo.
 
 Essa separação garante:
 
