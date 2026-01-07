@@ -3,11 +3,11 @@
 # Está em uma distribuição Linux?
 
 * Temos a versão compilada do software, baixe e execute!
-* [Clique aqui](https://github.com/Hsyst/hps/releases)
+* [Clique aqui](https://github.com/Hsyst-Eleuthery/hps/releases)
 
 # ⚠️ AVISO
 
-* Este projeto **não é open-source**, verifique a [licença](https://github.com/Hsyst/hps/blob/main/LICENSE.md) antes de executar ou replicar.
+* Este projeto **não é open-source**, verifique a [licença](https://github.com/Hsyst-Eleuthery/hps/blob/main/LICENSE.md) antes de executar ou replicar.
 - Utilizando pela primeira vez? Nosso servidor oficial é:
 - - Conecte-se primeiro no: `server2.hps.hsyst.xyz` (HTTPS/TLS), acesse thais.hps (hps://5b99043ed307e902efee003ae6f38e9541985fb06907b7bf03fef18b477e4a78)
   - Caso não encontre o arquivo que procura, além do de testes, tente acessar em `server1.hps.hsyst.xyz` (HTTP/Backup do HTTPS/TLS)
@@ -15,7 +15,7 @@
 
 # Manual Técnico
 
-* Quer saber a parte mais profunda do projeto? [Clique Aqui](https://github.com/Hsyst/hps/blob/main/tecnico.md)
+* Quer saber a parte mais profunda do projeto? [Clique Aqui](https://github.com/Hsyst-Eleuthery/hps/blob/main/tecnico.md)
 
 ---
 
