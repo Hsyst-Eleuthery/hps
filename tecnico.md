@@ -1,5 +1,5 @@
 # AVISO
-- Este projeto não é open-source, verifique a [licença](https://github.com/Hsyst/hps/blob/main/LICENSE.md) antes de executar ou replicar
+- Este projeto não é open-source, verifique a [licença](https://github.com/Hsyst-Eleuthery/hps/blob/main/LICENSE.md) antes de executar ou replicar
 
 
 # ⚙️ Manual Técnico — Hsyst Peer-to-Peer Service (HPS)
