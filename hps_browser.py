@@ -35,9 +35,78 @@ import sqlite3
 import ssl
 import subprocess
 import platform
+import difflib
+import re
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("HPS-Browser")
+
+def create_scrollable_container(parent, padding=None):
+    container = ttk.Frame(parent)
+    canvas = tk.Canvas(container, highlightthickness=0)
+    scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+    content = ttk.Frame(canvas, padding=padding) if padding else ttk.Frame(canvas)
+    content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    def can_scroll():
+        bbox = canvas.bbox("all")
+        if not bbox:
+            return False
+        content_height = bbox[3] - bbox[1]
+        return content_height > canvas.winfo_height()
+
+    def update_scrollbar():
+        if can_scroll():
+            scrollbar.state(["!disabled"])
+        else:
+            scrollbar.state(["disabled"])
+            canvas.yview_moveto(0)
+
+    def on_content_configure(_event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        update_scrollbar()
+
+    def on_canvas_configure(event):
+        canvas.itemconfigure(content_id, width=event.width)
+        update_scrollbar()
+
+    content.bind("<Configure>", on_content_configure)
+    canvas.bind("<Configure>", on_canvas_configure)
+
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    bind_scroll_events(container, canvas, can_scroll)
+    container.after(0, update_scrollbar)
+    return container, content
+
+def bind_scroll_events(widget, canvas, can_scroll):
+    def on_mousewheel(event):
+        if not can_scroll():
+            return
+        if event.num == 4:
+            canvas.yview_scroll(-1, "units")
+            return
+        if event.num == 5:
+            canvas.yview_scroll(1, "units")
+            return
+        if event.delta:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def on_enter(_event):
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        canvas.bind_all("<Button-4>", on_mousewheel)
+        canvas.bind_all("<Button-5>", on_mousewheel)
+
+    def on_leave(_event):
+        canvas.unbind_all("<MouseWheel>")
+        canvas.unbind_all("<Button-4>")
+        canvas.unbind_all("<Button-5>")
+
+    widget.bind("<Enter>", on_enter)
+    widget.bind("<Leave>", on_leave)
 
 class ContentSecurityDialog:
     def __init__(self, parent, content_info, browser_instance):
@@ -47,9 +116,21 @@ class ContentSecurityDialog:
         self.window.transient(parent)
         self.window.grab_set()
         self.browser = browser_instance
+
+        if content_info.get('contract_blocked'):
+            container, main_frame = create_scrollable_container(self.window, padding="15")
+            container.pack(fill=tk.BOTH, expand=True)
+            ttk.Label(
+                main_frame,
+                text="STATUS DE SEGURANCA INDISPONIVEL\nQuebra de contrato detectada.",
+                foreground="red",
+                font=("Arial", 12, "bold")
+            ).pack(pady=20)
+            ttk.Button(main_frame, text="Fechar", command=self.window.destroy).pack(pady=10)
+            return
         
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Verificação de Segurança do Conteúdo", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -80,6 +161,7 @@ class ContentSecurityDialog:
         details = [
             ("Título:", content_info.get('title', 'N/A')),
             ("Autor:", content_info.get('username', 'N/A')),
+            ("Dono:", content_info.get('original_owner') or content_info.get('username', 'N/A')),
             ("Hash:", content_info.get('content_hash', 'N/A')),
             ("Tipo MIME:", content_info.get('mime_type', 'N/A')),
             ("Reputação do Autor:", str(content_info.get('reputation', 100))),
@@ -89,6 +171,14 @@ class ContentSecurityDialog:
         for i, (label, value) in enumerate(details):
             ttk.Label(info_grid, text=label, font=("Arial", 9, "bold")).grid(row=i, column=0, sticky=tk.W, pady=2, padx=5)
             ttk.Label(info_grid, text=value, font=("Arial", 9)).grid(row=i, column=1, sticky=tk.W, pady=2, padx=5)
+
+        certifier = content_info.get('certifier', '')
+        if certifier:
+            cert_frame = ttk.Frame(details_frame)
+            cert_frame.pack(fill=tk.X, pady=(6, 0))
+            ttk.Label(cert_frame, text="Certificador:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
+            cert_button = ttk.Button(cert_frame, text=certifier, command=lambda: self.show_certifier_info(certifier))
+            cert_button.pack(side=tk.LEFT, padx=5)
             
         sig_frame = ttk.LabelFrame(main_frame, text="Assinatura Digital", padding="10")
         sig_frame.pack(fill=tk.BOTH, expand=True, pady=10)
@@ -135,6 +225,14 @@ class ContentSecurityDialog:
             self.browser.report_content_action(content_info.get('content_hash'), content_info.get('username'))
             self.window.destroy()
 
+    def show_certifier_info(self, certifier):
+        messagebox.showinfo(
+            "Certificador",
+            f"{certifier} certificou este contrato. "
+            "Isso significa que houve um problema contratual, mas a situacao foi resolvida "
+            "com um novo contrato valido assinado por este certificador."
+        )
+
     def open_with_app(self, content_info):
         try:
             temp_dir = tempfile.gettempdir()
@@ -155,6 +253,132 @@ class ContentSecurityDialog:
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir arquivo: {e}")
 
+class DomainSecurityDialog:
+    def __init__(self, parent, domain_info, browser_instance):
+        self.window = tk.Toplevel(parent)
+        self.window.title("Seguranca do Dominio")
+        self.window.geometry("700x520")
+        self.window.transient(parent)
+        self.window.update_idletasks()
+        try:
+            self.window.wait_visibility()
+            self.window.grab_set()
+        except tk.TclError:
+            self.window.after(50, self.window.grab_set)
+        self.browser = browser_instance
+
+        if domain_info.get('contract_blocked'):
+            container, main_frame = create_scrollable_container(self.window, padding="15")
+            container.pack(fill=tk.BOTH, expand=True)
+            ttk.Label(
+                main_frame,
+                text="STATUS DE SEGURANCA INDISPONIVEL\nQuebra de contrato detectada.",
+                foreground="red",
+                font=("Arial", 12, "bold")
+            ).pack(pady=20)
+            ttk.Button(main_frame, text="Fechar", command=self.window.destroy).pack(pady=10)
+            return
+
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="Seguranca do Dominio", font=("Arial", 14, "bold")).pack(pady=10)
+
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill=tk.X, pady=10)
+
+        verified = domain_info.get('verified', False)
+        contract_ok = not domain_info.get('contract_violation', False)
+        status_text = "DOMINIO VERIFICADO" if verified and contract_ok else "DOMINIO SEM GARANTIA"
+        status_color = "green" if verified and contract_ok else "red"
+        ttk.Label(status_frame, text=status_text, foreground=status_color, font=("Arial", 12, "bold")).pack()
+
+        details_frame = ttk.LabelFrame(main_frame, text="Detalhes do Dominio", padding="10")
+        details_frame.pack(fill=tk.X, pady=10)
+
+        info_grid = ttk.Frame(details_frame)
+        info_grid.pack(fill=tk.X)
+
+        details = [
+            ("Dominio:", domain_info.get('domain', 'N/A')),
+            ("Hash:", domain_info.get('content_hash', 'N/A')),
+            ("Dono:", domain_info.get('original_owner') or domain_info.get('username', 'N/A')),
+            ("Certificador:", domain_info.get('certifier', '') or "N/A"),
+            ("Verificado:", "Sim" if verified else "Nao"),
+        ]
+
+        for i, (label, value) in enumerate(details):
+            ttk.Label(info_grid, text=label, font=("Arial", 9, "bold")).grid(row=i, column=0, sticky=tk.W, pady=2, padx=5)
+            ttk.Label(info_grid, text=value, font=("Arial", 9)).grid(row=i, column=1, sticky=tk.W, pady=2, padx=5)
+
+        contracts = domain_info.get('contracts', []) or []
+        contract_frame = ttk.LabelFrame(main_frame, text="Contratos", padding="10")
+        contract_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        contract_text = scrolledtext.ScrolledText(contract_frame, height=8)
+        contract_text.pack(fill=tk.BOTH, expand=True)
+        if not contracts:
+            contract_text.insert(tk.END, "Nenhum contrato encontrado para este dominio.")
+        else:
+            for contract in contracts:
+                contract_text.insert(tk.END, f"- {contract.get('action_type')} | {contract.get('contract_id')}\n")
+        contract_text.config(state=tk.DISABLED)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+
+        ttk.Button(button_frame, text="Fechar", command=self.window.destroy).pack(side=tk.LEFT, padx=5)
+
+class ContractBlockedDialog:
+    def __init__(self, parent, message):
+        self.window = tk.Toplevel(parent)
+        self.window.title("Acesso Bloqueado por Contrato")
+        self.window.geometry("520x260")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.proceed = False
+        self._blink_on = True
+        self.message = message
+
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="Conteudo indisponivel", font=("Arial", 12, "bold")).pack(pady=5)
+        self.message_label = ttk.Label(
+            main_frame,
+            text=message,
+            foreground="red",
+            font=("Arial", 11, "bold"),
+            wraplength=460,
+            justify="center"
+        )
+        self.message_label.pack(pady=15)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="Continuar", command=self.confirm).pack(side=tk.LEFT, padx=8)
+        ttk.Button(button_frame, text="Fechar", command=self.close).pack(side=tk.LEFT, padx=8)
+
+        self._blink()
+
+    def _blink(self):
+        if not self.window.winfo_exists():
+            return
+        self._blink_on = not self._blink_on
+        if self._blink_on:
+            self.message_label.config(text=self.message)
+        else:
+            self.message_label.config(text="")
+        self.window.after(1000, self._blink)
+
+    def confirm(self):
+        self.proceed = True
+        self.window.destroy()
+
+    def close(self):
+        self.proceed = False
+        self.window.destroy()
+
 class SearchDialog:
     def __init__(self, parent, browser):
         self.browser = browser
@@ -166,8 +390,8 @@ class SearchDialog:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Busca Avançada", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -265,6 +489,437 @@ class SearchDialog:
         except tk.TclError:
             messagebox.showwarning("Aviso", "Selecione um hash para copiar")
 
+class ContractDialog:
+    def __init__(self, parent, contract_text, title_suffix="", signer=None):
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"Contrato {title_suffix}".strip())
+        self.window.geometry("900x700")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self.cancel)
+        
+        self.template_text = contract_text.strip()
+        self.current_text = self.template_text
+        self.confirmed = False
+        self.signer = signer
+        self.signed = False
+        self.contract_hash_var = tk.StringVar(value="")
+        self.summary_var = tk.StringVar(value="")
+        self.accept_var = tk.BooleanVar(value=False)
+        
+        self.setup_ui()
+        self.update_diff()
+
+    def setup_ui(self):
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Revisar e Confirmar Contrato", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(
+            main_frame,
+            text="Confira as informacoes, assine e confirme. Isso protege voce e registra o que sera feito.",
+            font=("Arial", 10)
+        ).pack(pady=(0, 10))
+        
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(info_frame, text="Hash do contrato:").pack(side=tk.LEFT)
+        ttk.Label(info_frame, textvariable=self.contract_hash_var, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
+
+        summary_frame = ttk.LabelFrame(main_frame, text="Resumo", padding="10")
+        summary_frame.pack(fill=tk.X, pady=(5, 10))
+        ttk.Label(summary_frame, textvariable=self.summary_var, justify=tk.LEFT).pack(anchor=tk.W)
+        
+        ttk.Label(main_frame, text="Contrato (editável):", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+        self.contract_text = scrolledtext.ScrolledText(main_frame, height=16)
+        self.contract_text.pack(fill=tk.BOTH, expand=False)
+        self.contract_text.insert(tk.END, self.template_text)
+        self.contract_text.bind("<KeyRelease>", lambda e: self.update_diff())
+        
+        ttk.Label(main_frame, text="Diff (template vs. atual):", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+        self.diff_text = scrolledtext.ScrolledText(main_frame, height=12)
+        self.diff_text.pack(fill=tk.BOTH, expand=True)
+        self.diff_text.config(state=tk.DISABLED)
+
+        ttk.Checkbutton(
+            main_frame,
+            text="Li e concordo com os termos deste contrato",
+            variable=self.accept_var
+        ).pack(anchor=tk.W, pady=(8, 0))
+        
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        
+        ttk.Button(button_frame, text="Cancelar", command=self.cancel).pack(side=tk.LEFT, padx=5)
+        self.confirm_button = ttk.Button(button_frame, text="Confirmar", command=self.confirm)
+        self.confirm_button.pack(side=tk.LEFT, padx=5)
+
+    def extract_contract_summary(self, contract_text):
+        info = {
+            "action": None,
+            "user": None,
+            "target_type": None,
+            "target_id": None,
+            "domain": None,
+            "content_hash": None,
+            "transfer_to": None,
+            "app": None,
+            "title": None
+        }
+        current_section = None
+        for line in contract_text.splitlines():
+            line = line.strip()
+            if line.startswith("### "):
+                if line.endswith(":"):
+                    current_section = line[4:-1].lower()
+            elif line.startswith("### :END "):
+                current_section = None
+            elif line.startswith("# "):
+                if current_section == "details" and line.startswith("# ACTION:"):
+                    info["action"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# TARGET_TYPE:"):
+                    info["target_type"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# TARGET_ID:"):
+                    info["target_id"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# DOMAIN:"):
+                    info["domain"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# CONTENT_HASH:"):
+                    info["content_hash"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# TRANSFER_TO:"):
+                    info["transfer_to"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# APP:"):
+                    info["app"] = line.split(":", 1)[1].strip()
+                elif current_section == "details" and line.startswith("# TITLE:"):
+                    info["title"] = line.split(":", 1)[1].strip()
+                elif current_section == "start" and line.startswith("# USER:"):
+                    info["user"] = line.split(":", 1)[1].strip()
+        summary_lines = []
+        if info["action"]:
+            summary_lines.append(f"Ação: {info['action']}")
+        if info["user"]:
+            summary_lines.append(f"Usuário: {info['user']}")
+        target = None
+        if info["target_type"] and info["target_id"]:
+            target = f"{info['target_type']} {info['target_id']}"
+        elif info["domain"]:
+            target = f"domain {info['domain']}"
+        elif info["content_hash"]:
+            target = f"content {info['content_hash']}"
+        if target:
+            summary_lines.append(f"Alvo: {target}")
+        if info["transfer_to"]:
+            summary_lines.append(f"Transferir para: {info['transfer_to']}")
+        if info["app"]:
+            summary_lines.append(f"App: {info['app']}")
+        if info["title"]:
+            summary_lines.append(f"Título: {info['title']}")
+        return "\n".join(summary_lines) if summary_lines else "Sem detalhes adicionais."
+
+    def update_diff(self):
+        self.current_text = self.contract_text.get(1.0, tk.END).strip()
+        contract_hash = hashlib.sha256(self.current_text.encode('utf-8')).hexdigest()
+        self.contract_hash_var.set(contract_hash)
+        self.summary_var.set(self.extract_contract_summary(self.current_text))
+        
+        template_lines = self.template_text.splitlines()
+        current_lines = self.current_text.splitlines()
+        diff_lines = difflib.unified_diff(
+            template_lines,
+            current_lines,
+            fromfile="template",
+            tofile="atual",
+            lineterm=""
+        )
+        diff_text = "\n".join(diff_lines)
+        
+        self.diff_text.config(state=tk.NORMAL)
+        self.diff_text.delete(1.0, tk.END)
+        self.diff_text.insert(tk.END, diff_text if diff_text else "Sem alterações")
+        self.diff_text.config(state=tk.DISABLED)
+
+    def confirm(self):
+        if not self.current_text.strip():
+            messagebox.showwarning("Aviso", "O contrato não pode ficar vazio.")
+            return
+        if not self.accept_var.get():
+            messagebox.showwarning("Aviso", "Confirme que leu e concorda com o contrato.")
+            return
+        if self.signer and not self.signed:
+            try:
+                signed_text = self.signer(self.current_text)
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha ao assinar contrato: {e}")
+                return
+            self.contract_text.config(state=tk.NORMAL)
+            self.contract_text.delete(1.0, tk.END)
+            self.contract_text.insert(tk.END, signed_text)
+            self.contract_text.config(state=tk.DISABLED)
+            self.signed = True
+            self.confirm_button.config(text="Continuar")
+            self.update_diff()
+            messagebox.showinfo("Contrato Assinado", "Contrato assinado. Revise e confirme para continuar.")
+            return
+        self.confirmed = True
+        self.window.destroy()
+
+    def cancel(self):
+        self.confirmed = False
+        self.window.destroy()
+
+class ContractAnalyzerDialog:
+    def __init__(self, parent, summary_lines, contract_text, title="Analisador de Contratos", allow_proceed=False,
+                 integrity_ok=True, verify_callback=None, reissue_callback=None, certify_callback=None,
+                 invalidate_callback=None, transfer_accept_callback=None, transfer_reject_callback=None,
+                 transfer_renounce_callback=None):
+        self.window = tk.Toplevel(parent)
+        self.window.title(title)
+        self.window.geometry("900x700")
+        self.window.transient(parent)
+        self.window.update_idletasks()
+        try:
+            self.window.wait_visibility()
+            self.window.grab_set()
+        except tk.TclError:
+            self.window.after(50, self.window.grab_set)
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.allow_proceed = allow_proceed
+        self.proceed = False
+        self.verify_callback = verify_callback
+        self.reissue_callback = reissue_callback
+        self.certify_callback = certify_callback
+        self.invalidate_callback = invalidate_callback
+        self.transfer_accept_callback = transfer_accept_callback
+        self.transfer_reject_callback = transfer_reject_callback
+        self.transfer_renounce_callback = transfer_renounce_callback
+
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text=title, font=("Arial", 14, "bold")).pack(pady=10)
+        status_text = "Contrato verificado" if integrity_ok else "Contrato adulterado ou invalido"
+        status_color = "green" if integrity_ok else "red"
+        ttk.Label(main_frame, text=status_text, foreground=status_color, font=("Arial", 11, "bold")).pack(pady=(0, 8))
+        ttk.Label(
+            main_frame,
+            text="Este painel explica o contrato associado ao arquivo. Leia antes de continuar.",
+            font=("Arial", 10)
+        ).pack(pady=(0, 10))
+
+        info_frame = ttk.LabelFrame(main_frame, text="Resumo", padding="10")
+        info_frame.pack(fill=tk.X, pady=5)
+
+        info_text = scrolledtext.ScrolledText(info_frame, height=8)
+        info_text.pack(fill=tk.BOTH, expand=True)
+        info_text.insert(tk.END, "\n".join(summary_lines))
+        info_text.config(state=tk.DISABLED)
+
+        ttk.Label(main_frame, text="Contrato completo:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+        contract_box = scrolledtext.ScrolledText(main_frame, height=18)
+        contract_box.pack(fill=tk.BOTH, expand=True)
+        contract_box.insert(tk.END, contract_text or "")
+        contract_box.config(state=tk.DISABLED)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+
+        if self.verify_callback:
+            ttk.Button(button_frame, text="Verificar Agora", command=self.verify).pack(side=tk.LEFT, padx=5)
+        if self.reissue_callback:
+            ttk.Button(button_frame, text="Emitir Novo Contrato", command=self.reissue).pack(side=tk.LEFT, padx=5)
+        if self.certify_callback:
+            ttk.Button(button_frame, text="Certificar Contrato", command=self.certify).pack(side=tk.LEFT, padx=5)
+        if self.invalidate_callback:
+            ttk.Button(button_frame, text="Invalidar Contrato", command=self.invalidate).pack(side=tk.LEFT, padx=5)
+        if self.transfer_accept_callback:
+            ttk.Button(button_frame, text="Resolver Transferencia", command=self.accept_transfer).pack(side=tk.LEFT, padx=5)
+        if self.transfer_reject_callback:
+            ttk.Button(button_frame, text="Rejeitar Transferencia", command=self.reject_transfer).pack(side=tk.LEFT, padx=5)
+        if self.transfer_renounce_callback:
+            ttk.Button(button_frame, text="Renunciar Transferencia", command=self.renounce_transfer).pack(side=tk.LEFT, padx=5)
+        if allow_proceed:
+            ttk.Button(button_frame, text="Prosseguir", command=self.confirm).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Fechar", command=self.close).pack(side=tk.LEFT, padx=5)
+
+    def verify(self):
+        try:
+            if self.verify_callback:
+                self.verify_callback()
+        finally:
+            messagebox.showinfo("Verificacao", "Verificacao solicitada. O contrato sera reaberto atualizado.")
+            self.window.destroy()
+
+    def reissue(self):
+        if messagebox.askyesno("Confirmar", "Isso vai apagar o registro no servidor e emitir um novo contrato. Continuar?"):
+            if self.reissue_callback:
+                self.reissue_callback()
+            self.window.destroy()
+
+    def certify(self):
+        if messagebox.askyesno(
+            "Confirmar",
+            "Voce esta prestes a registrar um novo contrato para este arquivo. Continuar?"
+        ):
+            if self.certify_callback:
+                self.certify_callback()
+            self.window.destroy()
+
+    def invalidate(self):
+        if messagebox.askyesno("Confirmar", "Invalidar este contrato remove o registro no servidor. Continuar?"):
+            if self.invalidate_callback:
+                self.invalidate_callback()
+            self.window.destroy()
+
+    def accept_transfer(self):
+        if messagebox.askyesno("Confirmar", "Aceitar esta transferencia requer assinatura e envio do contrato. Continuar?"):
+            if self.transfer_accept_callback:
+                self.transfer_accept_callback()
+            self.window.destroy()
+
+    def reject_transfer(self):
+        if messagebox.askyesno(
+            "Confirmar",
+            "Rejeitar esta transferencia devolve ao dono original e pode ir para a custodia se ele renunciar. Continuar?"
+        ):
+            if self.transfer_reject_callback:
+                self.transfer_reject_callback()
+            self.window.destroy()
+
+    def renounce_transfer(self):
+        if messagebox.askyesno(
+            "Confirmar",
+            "Renunciar envia esta transferencia para a custodia imediatamente. Continuar?"
+        ):
+            if self.transfer_renounce_callback:
+                self.transfer_renounce_callback()
+            self.window.destroy()
+
+    def confirm(self):
+        self.proceed = True
+        self.window.destroy()
+
+    def close(self):
+        self.window.destroy()
+
+class ApiAppNoticeDialog:
+    def __init__(self, parent, app_name, is_latest=True):
+        self.window = tk.Toplevel(parent)
+        self.window.title("API App")
+        self.window.geometry("520x280")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.proceed = False
+        self.analyze_versions = False
+
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="API App Detectado", font=("Arial", 14, "bold")).pack(pady=10)
+        status_text = "Esta e a versao mais recente." if is_latest else "Existe uma versao mais recente deste app."
+        ttk.Label(main_frame, text=f"App: {app_name}\n{status_text}", font=("Arial", 10)).pack(pady=10)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+
+        ttk.Button(button_frame, text="Prosseguir", command=self.confirm).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Analisar Versoes", command=self.open_versions).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Fechar", command=self.close).pack(side=tk.LEFT, padx=5)
+
+    def confirm(self):
+        self.proceed = True
+        self.window.destroy()
+
+    def open_versions(self):
+        self.analyze_versions = True
+        self.window.destroy()
+
+    def close(self):
+        self.window.destroy()
+
+class ApiAppVersionsDialog:
+    def __init__(self, parent, app_name, versions, current_hash):
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"Versoes do API App - {app_name}")
+        self.window.geometry("800x520")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+        self.selected_hash = None
+        self.proceed_current = False
+
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="Versoes Disponiveis", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(main_frame, text=f"App: {app_name}", font=("Arial", 10)).pack(pady=(0, 10))
+
+        self.versions_tree = ttk.Treeview(
+            main_frame,
+            columns=("version", "hash", "user", "timestamp", "action"),
+            show="headings",
+            height=10
+        )
+        self.versions_tree.heading("version", text="Versao")
+        self.versions_tree.heading("hash", text="Hash")
+        self.versions_tree.heading("user", text="Usuario")
+        self.versions_tree.heading("timestamp", text="Data")
+        self.versions_tree.heading("action", text="Acao")
+        self.versions_tree.column("version", width=80)
+        self.versions_tree.column("hash", width=200)
+        self.versions_tree.column("user", width=120)
+        self.versions_tree.column("timestamp", width=140)
+        self.versions_tree.column("action", width=120)
+        self.versions_tree.pack(fill=tk.BOTH, expand=True)
+        self.versions_tree.bind("<Double-1>", lambda e: self.open_selected())
+
+        for version in versions:
+            timestamp = version.get('timestamp')
+            if timestamp:
+                try:
+                    timestamp_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    timestamp_str = str(timestamp)
+            else:
+                timestamp_str = ""
+            content_hash = version.get('content_hash') or ""
+            label = version.get('version_label') or "Upload"
+            if content_hash == current_hash:
+                label = f"{label} (atual)"
+            self.versions_tree.insert("", tk.END, values=(
+                label,
+                (content_hash[:16] + "...") if content_hash else "",
+                version.get('username', ''),
+                timestamp_str,
+                version.get('action_type', '')
+            ), tags=(content_hash,))
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+
+        ttk.Button(button_frame, text="Abrir Selecionada", command=self.open_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Prosseguir com Atual", command=self.proceed).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Fechar", command=self.close).pack(side=tk.LEFT, padx=5)
+
+    def open_selected(self):
+        selection = self.versions_tree.selection()
+        if not selection:
+            messagebox.showwarning("Aviso", "Selecione uma versao para abrir.")
+            return
+        item = selection[0]
+        tags = self.versions_tree.item(item, 'tags')
+        if tags:
+            self.selected_hash = tags[0]
+            self.window.destroy()
+
+    def proceed(self):
+        self.proceed_current = True
+        self.window.destroy()
+
+    def close(self):
+        self.window.destroy()
+
 class PowPopupWindow:
     def __init__(self, parent, action_type="login"):
         self.window = tk.Toplevel(parent)
@@ -280,8 +935,8 @@ class PowPopupWindow:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text=f"Resolvendo Prova de Trabalho", font=("Arial", 14, "bold")).pack(pady=10)
         ttk.Label(main_frame, text=f"Ação: {self.action_type.title()}").pack(pady=5)
@@ -368,8 +1023,8 @@ class UploadProgressWindow:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Upload de Arquivo", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -444,8 +1099,8 @@ class DDNSProgressWindow:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Registro de DNS", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -505,8 +1160,8 @@ class ReportProgressWindow:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Reporte de Conteúdo", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -674,8 +1329,8 @@ class PowSolver:
                     
                     nonce += 1
                     
-                    if nonce % 10000 == 0:
-                        time.sleep(0.001)
+                    if nonce % 1000 == 0:
+                        time.sleep(0)
                     
                     if nonce % 1000 == 0 and not self.is_solving:
                         break
@@ -716,8 +1371,8 @@ class NetworkSyncDialog:
         self.setup_ui()
 
     def setup_ui(self):
-        main_frame = ttk.Frame(self.window, padding="15")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        container, main_frame = create_scrollable_container(self.window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(main_frame, text="Sincronização de Rede P2P", font=("Arial", 14, "bold")).pack(pady=10)
         
@@ -761,8 +1416,8 @@ class HPSBrowser:
     def __init__(self, root):
         self.root = root
         self.root.title("Navegador P2P Hsyst")
-        self.root.geometry("1400x900")
-        self.root.minsize(1200, 800)
+        self.root.geometry("800x600")
+        self.root.minsize(800, 600)
         
         self.current_user = None
         self.private_key = None
@@ -795,6 +1450,7 @@ class HPSBrowser:
         self.report_blocked_until = 0
         self.ban_duration = 0
         self.ban_reason = ""
+        self.ban_status_message = ""
         self.pow_solver = PowSolver(self)
         self.max_upload_size = 100 * 1024 * 1024
         self.disk_quota = 500 * 1024 * 1024
@@ -810,12 +1466,18 @@ class HPSBrowser:
         self.upload_callback = None
         self.dns_callback = None
         self.report_callback = None
+        self.contract_reset_callback = None
+        self.contract_certify_callback = None
+        self.contract_transfer_callback = None
+        self.usage_contract_callback = None
+        self.pending_usage_contract = None
         self.search_dialog = None
         self.sync_dialog = None
         self.ssl_verify = False
         self.use_ssl = False
         self.backup_server = None
         self.auto_reconnect = True
+        self.active_section = None
         
         self.stats_data = {
             'session_start': time.time(),
@@ -832,6 +1494,27 @@ class HPSBrowser:
         self.loop = None
         self.sio = None
         self.network_thread = None
+        
+        self.contracts_filter_mode = "all"
+        self.contracts_filter_value = ""
+        self.contracts_pending_details = set()
+        self.contracts_results_cache = {}
+        self.pending_api_app_requests = {}
+        self.pending_contract_analyzer_id = None
+        self.reported_contract_issues = set()
+        self.contract_alert_active = False
+        self.contract_alert_message = ""
+        self.contract_alert_blink = False
+        self.last_pending_transfer_notice = 0.0
+        self.active_contract_violations = {}
+        self.pending_missing_contract_target = None
+        self.missing_contract_certify_callback = None
+        self.current_dns_info = None
+        self.pending_contract_reissue = None
+        self.pending_transfers = []
+        self.pending_transfers_by_contract = {}
+        self.pending_transfer_accept_id = None
+        self.pending_certify_contract_id = None
         
         self.crypto_dir = os.path.join(os.path.expanduser("~"), ".hps_browser")
         os.makedirs(self.crypto_dir, exist_ok=True)
@@ -904,7 +1587,23 @@ class HPSBrowser:
                     content_hash TEXT NOT NULL,
                     username TEXT NOT NULL,
                     verified INTEGER DEFAULT 0,
-                    timestamp REAL NOT NULL
+                    timestamp REAL NOT NULL,
+                    signature TEXT DEFAULT '',
+                    public_key TEXT DEFAULT ''
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS browser_contracts_cache (
+                    contract_id TEXT PRIMARY KEY,
+                    action_type TEXT NOT NULL,
+                    content_hash TEXT,
+                    domain TEXT,
+                    username TEXT NOT NULL,
+                    signature TEXT,
+                    timestamp REAL NOT NULL,
+                    verified INTEGER DEFAULT 0,
+                    contract_content TEXT
                 )
             ''')
             
@@ -934,6 +1633,16 @@ class HPSBrowser:
                     cursor.execute('ALTER TABLE browser_dns_records ADD COLUMN ddns_hash TEXT NOT NULL DEFAULT ""')
             except Exception as e:
                 logger.error(f"Error checking/adding ddns_hash column: {e}")
+                
+            try:
+                cursor.execute("PRAGMA table_info(browser_ddns_cache)")
+                columns = [column[1] for column in cursor.fetchall()]
+                if 'signature' not in columns:
+                    cursor.execute('ALTER TABLE browser_ddns_cache ADD COLUMN signature TEXT DEFAULT ""')
+                if 'public_key' not in columns:
+                    cursor.execute('ALTER TABLE browser_ddns_cache ADD COLUMN public_key TEXT DEFAULT ""')
+            except Exception as e:
+                logger.error(f"Error checking/adding ddns cache columns: {e}")
                 
             conn.commit()
 
@@ -982,11 +1691,17 @@ class HPSBrowser:
         self.setup_browser_ui()
         self.setup_dns_ui()
         self.setup_upload_ui()
+        self.setup_hps_actions_ui()
         self.setup_network_ui()
+        self.setup_contracts_ui()
         self.setup_settings_ui()
         self.setup_servers_ui()
         self.setup_stats_ui()
         self.show_login()
+
+    def create_scrollable_tab(self, parent):
+        container, content = create_scrollable_container(parent)
+        return container, content
 
     def setup_main_frames(self):
         main_frame = ttk.Frame(self.root, padding="10")
@@ -1007,7 +1722,9 @@ class HPSBrowser:
             "browser": ttk.Button(nav_frame, text="Navegador", command=self.show_browser, width=15),
             "dns": ttk.Button(nav_frame, text="DNS", command=self.show_dns, width=15),
             "upload": ttk.Button(nav_frame, text="Upload", command=self.show_upload, width=15),
+            "hps_actions": ttk.Button(nav_frame, text="Acoes HPS", command=self.show_hps_actions, width=15),
             "network": ttk.Button(nav_frame, text="Rede", command=self.show_network, width=15),
+            "certificates": ttk.Button(nav_frame, text="Certificados", command=self.show_certificates, width=15),
             "settings": ttk.Button(nav_frame, text="Config", command=self.show_settings, width=15),
             "servers": ttk.Button(nav_frame, text="Servidores", command=self.show_servers, width=15),
             "stats": ttk.Button(nav_frame, text="Stats", command=self.show_stats, width=15),
@@ -1035,44 +1752,44 @@ class HPSBrowser:
         ttk.Label(status_frame, textvariable=self.reputation_var).pack(side=tk.RIGHT, padx=20)
         
         self.ban_status_var = tk.StringVar(value="")
-        ban_label = ttk.Label(status_frame, textvariable=self.ban_status_var, foreground="red")
-        ban_label.pack(side=tk.RIGHT, padx=20)
+        self.ban_status_label = ttk.Label(status_frame, textvariable=self.ban_status_var, foreground="red")
+        self.ban_status_label.pack(side=tk.RIGHT, padx=20)
         
         self.disk_usage_var = tk.StringVar(value=f"0MB/500MB")
         ttk.Label(status_frame, textvariable=self.disk_usage_var).pack(side=tk.RIGHT, padx=20)
 
     def setup_login_ui(self):
-        self.login_frame = ttk.Frame(self.main_area)
+        self.login_frame, login_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.login_frame, text="Entrar na Rede P2P", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+        ttk.Label(login_frame, text="Entrar na Rede P2P", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
         
-        ttk.Label(self.login_frame, text="Servidor:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(login_frame, text="Servidor:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.server_var = tk.StringVar(value="localhost:8080")
-        self.server_combo = ttk.Combobox(self.login_frame, textvariable=self.server_var, values=self.known_servers)
+        self.server_combo = ttk.Combobox(login_frame, textvariable=self.server_var, values=self.known_servers)
         self.server_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5)
         self.server_combo['state'] = 'readonly'
         
-        ttk.Label(self.login_frame, text="Usuário:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(login_frame, text="Usuário:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.username_var = tk.StringVar()
-        ttk.Entry(self.login_frame, textvariable=self.username_var).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5)
+        ttk.Entry(login_frame, textvariable=self.username_var).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5)
         
-        ttk.Label(self.login_frame, text="Senha:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(login_frame, text="Senha:").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.password_var = tk.StringVar()
-        ttk.Entry(self.login_frame, textvariable=self.password_var, show="*").grid(row=3, column=1, sticky=(tk.W, tk.E), pady=5)
+        ttk.Entry(login_frame, textvariable=self.password_var, show="*").grid(row=3, column=1, sticky=(tk.W, tk.E), pady=5)
         
         self.auto_login_var = tk.BooleanVar()
-        ttk.Checkbutton(self.login_frame, text="Login automático", variable=self.auto_login_var).grid(row=4, column=0, columnspan=2, pady=5)
+        ttk.Checkbutton(login_frame, text="Login automático", variable=self.auto_login_var).grid(row=4, column=0, columnspan=2, pady=5)
         
         self.save_keys_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.login_frame, text="Salvar chaves criptográficas", variable=self.save_keys_var).grid(row=5, column=0, columnspan=2, pady=5)
+        ttk.Checkbutton(login_frame, text="Salvar chaves criptográficas", variable=self.save_keys_var).grid(row=5, column=0, columnspan=2, pady=5)
         
         self.use_ssl_var = tk.BooleanVar(value=self.use_ssl)
-        ttk.Checkbutton(self.login_frame, text="Usar SSL/TLS", variable=self.use_ssl_var).grid(row=6, column=0, columnspan=2, pady=5)
+        ttk.Checkbutton(login_frame, text="Usar SSL/TLS", variable=self.use_ssl_var).grid(row=6, column=0, columnspan=2, pady=5)
         
         self.auto_reconnect_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.login_frame, text="Reconexão automática", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, pady=5)
+        ttk.Checkbutton(login_frame, text="Reconexão automática", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, pady=5)
         
-        button_frame = ttk.Frame(self.login_frame)
+        button_frame = ttk.Frame(login_frame)
         button_frame.grid(row=8, column=0, columnspan=2, pady=20)
         
         self.enter_button = ttk.Button(button_frame, text="Entrar na Rede", command=self.enter_network)
@@ -1081,15 +1798,15 @@ class HPSBrowser:
         self.exit_button = ttk.Button(button_frame, text="Sair da Rede", command=self.exit_network)
         self.exit_button.pack(side=tk.LEFT, padx=5)
         
-        self.login_status = ttk.Label(self.login_frame, text="", foreground="red")
+        self.login_status = ttk.Label(login_frame, text="", foreground="red")
         self.login_status.grid(row=9, column=0, columnspan=2, pady=5)
         
-        self.login_frame.columnconfigure(1, weight=1)
+        login_frame.columnconfigure(1, weight=1)
 
     def setup_browser_ui(self):
-        self.browser_frame = ttk.Frame(self.main_area)
+        self.browser_frame, browser_frame = self.create_scrollable_tab(self.main_area)
         
-        top_frame = ttk.Frame(self.browser_frame)
+        top_frame = ttk.Frame(browser_frame)
         top_frame.pack(fill=tk.X, pady=10)
         
         ttk.Button(top_frame, text="Voltar", command=self.browser_back, width=8).pack(side=tk.LEFT, padx=2)
@@ -1106,7 +1823,7 @@ class HPSBrowser:
         ttk.Button(top_frame, text="Buscar", command=self.show_search_dialog, width=8).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text="Ir", command=self.browser_navigate).pack(side=tk.LEFT, padx=2)
         
-        self.browser_content = scrolledtext.ScrolledText(self.browser_frame, wrap=tk.WORD, font=("Arial", 11))
+        self.browser_content = scrolledtext.ScrolledText(browser_frame, wrap=tk.WORD, font=("Arial", 11))
         self.browser_content.pack(fill=tk.BOTH, expand=True, pady=10)
         self.browser_content.config(state=tk.DISABLED)
         
@@ -1117,11 +1834,11 @@ class HPSBrowser:
         self.browser_content.bind("<Button-1>", self.handle_content_click)
 
     def setup_dns_ui(self):
-        self.dns_frame = ttk.Frame(self.main_area)
+        self.dns_frame, dns_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.dns_frame, text="Sistema de Nomes Descentralizado", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(dns_frame, text="Sistema de Nomes Descentralizado", font=("Arial", 14, "bold")).pack(pady=10)
         
-        dns_top_frame = ttk.Frame(self.dns_frame)
+        dns_top_frame = ttk.Frame(dns_frame)
         dns_top_frame.pack(fill=tk.X, pady=10)
         
         ttk.Label(dns_top_frame, text="Domínio:").pack(side=tk.LEFT, padx=5)
@@ -1130,20 +1847,21 @@ class HPSBrowser:
         
         ttk.Button(dns_top_frame, text="Registrar", command=self.register_dns).pack(side=tk.LEFT, padx=5)
         ttk.Button(dns_top_frame, text="Resolver", command=self.resolve_dns).pack(side=tk.LEFT, padx=5)
+        ttk.Button(dns_top_frame, text="Seguranca", command=self.show_security_dialog).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(self.dns_frame, text="Hash do conteúdo:").pack(anchor=tk.W, pady=5)
+        ttk.Label(dns_frame, text="Hash do conteúdo:").pack(anchor=tk.W, pady=5)
         
-        dns_content_frame = ttk.Frame(self.dns_frame)
+        dns_content_frame = ttk.Frame(dns_frame)
         dns_content_frame.pack(fill=tk.X, pady=5)
         
         self.dns_content_hash_var = tk.StringVar()
         ttk.Entry(dns_content_frame, textvariable=self.dns_content_hash_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         ttk.Button(dns_content_frame, text="Selecionar Arquivo", command=self.select_dns_content_file).pack(side=tk.LEFT, padx=5)
         
-        self.dns_status = ttk.Label(self.dns_frame, text="", foreground="red")
+        self.dns_status = ttk.Label(dns_frame, text="", foreground="red")
         self.dns_status.pack(pady=5)
         
-        self.dns_tree = ttk.Treeview(self.dns_frame, columns=("domain", "content_hash", "verified"), show="headings")
+        self.dns_tree = ttk.Treeview(dns_frame, columns=("domain", "content_hash", "verified"), show="headings")
         self.dns_tree.heading("domain", text="Domínio")
         self.dns_tree.heading("content_hash", text="Hash do Conteúdo")
         self.dns_tree.heading("verified", text="Verificado")
@@ -1154,11 +1872,11 @@ class HPSBrowser:
         self.dns_tree.bind("<Double-1>", self.open_dns_content)
 
     def setup_upload_ui(self):
-        self.upload_frame = ttk.Frame(self.main_area)
+        self.upload_frame, upload_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.upload_frame, text="Upload de Conteúdo", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(upload_frame, text="Upload de Conteúdo", font=("Arial", 14, "bold")).pack(pady=10)
         
-        upload_form_frame = ttk.Frame(self.upload_frame)
+        upload_form_frame = ttk.Frame(upload_frame)
         upload_form_frame.pack(fill=tk.X, pady=10)
         
         ttk.Label(upload_form_frame, text="Arquivo:").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -1180,24 +1898,96 @@ class HPSBrowser:
         
         ttk.Button(upload_form_frame, text="Upload", command=self.upload_file).grid(row=4, column=0, columnspan=3, pady=10)
         
-        self.upload_status = ttk.Label(self.upload_frame, text="", foreground="red")
+        self.upload_status = ttk.Label(upload_frame, text="", foreground="red")
         self.upload_status.pack(pady=5)
         
         upload_form_frame.columnconfigure(1, weight=1)
 
+    def setup_hps_actions_ui(self):
+        self.hps_actions_frame, hps_actions_frame = self.create_scrollable_tab(self.main_area)
+
+        ttk.Label(hps_actions_frame, text="Ações HPS", font=("Arial", 14, "bold")).pack(pady=10)
+
+        select_frame = ttk.Frame(hps_actions_frame)
+        select_frame.pack(fill=tk.X, pady=10)
+
+        ttk.Label(select_frame, text="Tipo:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.hps_action_var = tk.StringVar(value="Transferir arquivo")
+        hps_actions = [
+            "Transferir arquivo",
+            "Transferir dominio",
+            "Transferir API App",
+            "Criar/Atualizar API App"
+        ]
+        action_combo = ttk.Combobox(select_frame, textvariable=self.hps_action_var, values=hps_actions, state="readonly")
+        action_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        action_combo.bind("<<ComboboxSelected>>", lambda e: self.update_hps_action_fields())
+        select_frame.columnconfigure(1, weight=1)
+
+        self.hps_target_user_var = tk.StringVar()
+        self.hps_app_name_var = tk.StringVar()
+        self.hps_domain_var = tk.StringVar()
+        self.hps_new_owner_var = tk.StringVar()
+        self.hps_content_hash_var = tk.StringVar()
+
+        self.hps_action_frames = {}
+
+        file_frame = ttk.Frame(hps_actions_frame)
+        ttk.Label(file_frame, text="Usuario destino:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(file_frame, textvariable=self.hps_target_user_var).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        ttk.Label(file_frame, text="Hash do conteudo:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(file_frame, textvariable=self.hps_content_hash_var).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        file_frame.columnconfigure(1, weight=1)
+        self.hps_action_frames["Transferir arquivo"] = file_frame
+
+        domain_frame = ttk.Frame(hps_actions_frame)
+        ttk.Label(domain_frame, text="Dominio:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(domain_frame, textvariable=self.hps_domain_var).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        ttk.Label(domain_frame, text="Novo dono:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(domain_frame, textvariable=self.hps_new_owner_var).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        domain_frame.columnconfigure(1, weight=1)
+        self.hps_action_frames["Transferir dominio"] = domain_frame
+
+        api_transfer_frame = ttk.Frame(hps_actions_frame)
+        ttk.Label(api_transfer_frame, text="Usuario destino:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(api_transfer_frame, textvariable=self.hps_target_user_var).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        ttk.Label(api_transfer_frame, text="Nome do App:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(api_transfer_frame, textvariable=self.hps_app_name_var).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        api_transfer_frame.columnconfigure(1, weight=1)
+        self.hps_action_frames["Transferir API App"] = api_transfer_frame
+
+        api_frame = ttk.Frame(hps_actions_frame)
+        ttk.Label(api_frame, text="Nome do App:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(api_frame, textvariable=self.hps_app_name_var).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        api_frame.columnconfigure(1, weight=1)
+        self.hps_action_frames["Criar/Atualizar API App"] = api_frame
+
+        action_button = ttk.Button(hps_actions_frame, text="Aplicar e Ir para Upload", command=self.apply_hps_action_template)
+        action_button.pack(pady=10)
+
+        self.update_hps_action_fields()
+
+    def update_hps_action_fields(self):
+        for frame in self.hps_action_frames.values():
+            frame.pack_forget()
+        selected = self.hps_action_var.get()
+        frame = self.hps_action_frames.get(selected)
+        if frame:
+            frame.pack(fill=tk.X, pady=5)
+
     def setup_network_ui(self):
-        self.network_frame = ttk.Frame(self.main_area)
+        self.network_frame, network_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.network_frame, text="Rede P2P", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(network_frame, text="Rede P2P", font=("Arial", 14, "bold")).pack(pady=10)
         
-        network_top_frame = ttk.Frame(self.network_frame)
+        network_top_frame = ttk.Frame(network_frame)
         network_top_frame.pack(fill=tk.X, pady=10)
         
         ttk.Button(network_top_frame, text="Atualizar", command=self.refresh_network).pack(side=tk.LEFT, padx=5)
         ttk.Button(network_top_frame, text="Sincronizar", command=self.sync_network).pack(side=tk.LEFT, padx=5)
         ttk.Button(network_top_frame, text="Meu Nó", command=self.show_my_node).pack(side=tk.LEFT, padx=5)
         
-        self.network_tree = ttk.Treeview(self.network_frame, columns=("node_id", "address", "type", "reputation", "status"), show="headings")
+        self.network_tree = ttk.Treeview(network_frame, columns=("node_id", "address", "type", "reputation", "status"), show="headings")
         self.network_tree.heading("node_id", text="ID do Nó")
         self.network_tree.heading("address", text="Endereço")
         self.network_tree.heading("type", text="Tipo")
@@ -1210,18 +2000,106 @@ class HPSBrowser:
         self.network_tree.column("status", width=80)
         self.network_tree.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        network_stats_frame = ttk.Frame(self.network_frame)
+        network_stats_frame = ttk.Frame(network_frame)
         network_stats_frame.pack(fill=tk.X, pady=10)
         
         self.network_stats_var = tk.StringVar(value="Nós: 0 | Conteúdo: 0 | DNS: 0")
         ttk.Label(network_stats_frame, textvariable=self.network_stats_var).pack()
 
+    def setup_contracts_ui(self):
+        self.contracts_frame, contracts_frame = self.create_scrollable_tab(self.main_area)
+        
+        ttk.Label(contracts_frame, text="Certificados e Contratos", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        search_frame = ttk.Frame(contracts_frame)
+        search_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(search_frame, text="Filtro:").pack(side=tk.LEFT, padx=5)
+        self.contract_filter_var = tk.StringVar(value="all")
+        filter_combo = ttk.Combobox(search_frame, textvariable=self.contract_filter_var,
+                                    values=["all", "hash", "domain", "user", "type", "api_app"], width=12)
+        filter_combo.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(search_frame, text="Valor:").pack(side=tk.LEFT, padx=5)
+        self.contract_search_var = tk.StringVar()
+        ttk.Entry(search_frame, textvariable=self.contract_search_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        ttk.Button(search_frame, text="Buscar", command=self.search_contracts_action).pack(side=tk.LEFT, padx=5)
+        ttk.Button(search_frame, text="Limpar", command=self.clear_contracts_search).pack(side=tk.LEFT, padx=5)
+
+        help_frame = ttk.Frame(contracts_frame)
+        help_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(
+            help_frame,
+            text="Dica: filtre por hash, dominio, usuario ou tipo. Clique duas vezes para abrir o analisador.",
+            font=("Arial", 9)
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(help_frame, text="Atualizar", command=self.search_contracts_action).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(help_frame, text="Abrir Analisador", command=self.open_selected_contract_analyzer).pack(side=tk.RIGHT, padx=5)
+
+        self.invalidated_contract_frame = ttk.Frame(contracts_frame)
+        self.invalidated_contract_label = ttk.Label(
+            self.invalidated_contract_frame,
+            text="Contrato invalidado detectado. Certifique o hash abaixo para regularizar.",
+            foreground="red"
+        )
+        self.invalidated_contract_label.pack(side=tk.LEFT, padx=5)
+        self.invalidated_contract_hash_var = tk.StringVar()
+        ttk.Entry(self.invalidated_contract_frame, textvariable=self.invalidated_contract_hash_var, width=50).pack(side=tk.LEFT, padx=5)
+        self.invalidated_contract_type_var = tk.StringVar(value="content")
+        ttk.Combobox(
+            self.invalidated_contract_frame,
+            textvariable=self.invalidated_contract_type_var,
+            values=["content", "domain"],
+            state="readonly",
+            width=10
+        ).pack(side=tk.LEFT, padx=5)
+        self.invalidated_contract_button = tk.Button(
+            self.invalidated_contract_frame,
+            text="Certificar",
+            fg="red",
+            font=("Arial", 10, "bold"),
+            command=self.start_missing_contract_certify
+        )
+        self.invalidated_contract_button.pack(side=tk.LEFT, padx=5)
+
+        self.contracts_tree = ttk.Treeview(
+            contracts_frame,
+            columns=("contract_id", "action", "content_hash", "domain", "username", "verified", "timestamp"),
+            show="headings"
+        )
+        self.contracts_tree.heading("contract_id", text="ID")
+        self.contracts_tree.heading("action", text="Ação")
+        self.contracts_tree.heading("content_hash", text="Hash")
+        self.contracts_tree.heading("domain", text="Domínio")
+        self.contracts_tree.heading("username", text="Usuário")
+        self.contracts_tree.heading("verified", text="Verificado")
+        self.contracts_tree.heading("timestamp", text="Data")
+        self.contracts_tree.column("contract_id", width=160)
+        self.contracts_tree.column("action", width=120)
+        self.contracts_tree.column("content_hash", width=180)
+        self.contracts_tree.column("domain", width=120)
+        self.contracts_tree.column("username", width=120)
+        self.contracts_tree.column("verified", width=80)
+        self.contracts_tree.column("timestamp", width=140)
+        self.contracts_tree.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.contracts_tree.tag_configure("invalid", foreground="red")
+        self.contracts_tree.bind("<<TreeviewSelect>>", self.on_contract_select)
+        self.contracts_tree.bind("<Double-1>", lambda e: self.open_selected_contract_analyzer())
+        
+        details_frame = ttk.LabelFrame(contracts_frame, text="Detalhes do Contrato", padding="10")
+        details_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        self.contract_details_text = scrolledtext.ScrolledText(details_frame, height=12)
+        self.contract_details_text.pack(fill=tk.BOTH, expand=True)
+        self.contract_details_text.config(state=tk.DISABLED)
+
     def setup_settings_ui(self):
-        self.settings_frame = ttk.Frame(self.main_area)
+        self.settings_frame, settings_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.settings_frame, text="Configurações", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(settings_frame, text="Configurações", font=("Arial", 14, "bold")).pack(pady=10)
         
-        settings_form_frame = ttk.Frame(self.settings_frame)
+        settings_form_frame = ttk.Frame(settings_frame)
         settings_form_frame.pack(fill=tk.X, pady=10)
         
         ttk.Label(settings_form_frame, text="ID do Cliente:").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -1247,11 +2125,11 @@ class HPSBrowser:
         settings_form_frame.columnconfigure(1, weight=1)
 
     def setup_servers_ui(self):
-        self.servers_frame = ttk.Frame(self.main_area)
+        self.servers_frame, servers_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.servers_frame, text="Servidores Conhecidos", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(servers_frame, text="Servidores Conhecidos", font=("Arial", 14, "bold")).pack(pady=10)
         
-        servers_top_frame = ttk.Frame(self.servers_frame)
+        servers_top_frame = ttk.Frame(servers_frame)
         servers_top_frame.pack(fill=tk.X, pady=10)
         
         ttk.Label(servers_top_frame, text="Novo Servidor:").pack(side=tk.LEFT, padx=5)
@@ -1259,7 +2137,7 @@ class HPSBrowser:
         ttk.Entry(servers_top_frame, textvariable=self.new_server_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         ttk.Button(servers_top_frame, text="Adicionar", command=self.add_server).pack(side=tk.LEFT, padx=5)
         
-        self.servers_tree = ttk.Treeview(self.servers_frame, columns=("address", "status", "reputation"), show="headings")
+        self.servers_tree = ttk.Treeview(servers_frame, columns=("address", "status", "reputation"), show="headings")
         self.servers_tree.heading("address", text="Endereço")
         self.servers_tree.heading("status", text="Status")
         self.servers_tree.heading("reputation", text="Reputação")
@@ -1268,7 +2146,7 @@ class HPSBrowser:
         self.servers_tree.column("reputation", width=100)
         self.servers_tree.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        servers_button_frame = ttk.Frame(self.servers_frame)
+        servers_button_frame = ttk.Frame(servers_frame)
         servers_button_frame.pack(pady=10)
         
         ttk.Button(servers_button_frame, text="Remover", command=self.remove_server).pack(side=tk.LEFT, padx=5)
@@ -1276,11 +2154,11 @@ class HPSBrowser:
         ttk.Button(servers_button_frame, text="Atualizar", command=self.refresh_servers).pack(side=tk.LEFT, padx=5)
 
     def setup_stats_ui(self):
-        self.stats_frame = ttk.Frame(self.main_area)
+        self.stats_frame, stats_frame = self.create_scrollable_tab(self.main_area)
         
-        ttk.Label(self.stats_frame, text="Estatísticas", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(stats_frame, text="Estatísticas", font=("Arial", 14, "bold")).pack(pady=10)
         
-        stats_grid = ttk.Frame(self.stats_frame)
+        stats_grid = ttk.Frame(stats_frame)
         stats_grid.pack(fill=tk.BOTH, expand=True, pady=10)
         
         self.stats_vars = {}
@@ -1302,7 +2180,7 @@ class HPSBrowser:
             ttk.Label(stats_grid, textvariable=var, font=("Arial", 10)).grid(row=i, column=1, sticky=tk.W, pady=5, padx=10)
             self.stats_vars[label] = var
             
-        ttk.Button(self.stats_frame, text="Atualizar", command=self.update_stats).pack(pady=10)
+        ttk.Button(stats_frame, text="Atualizar", command=self.update_stats).pack(pady=10)
 
     def show_login(self):
         self.show_frame(self.login_frame)
@@ -1330,6 +2208,13 @@ class HPSBrowser:
         self.show_frame(self.upload_frame)
         self.update_nav_buttons("upload")
 
+    def show_hps_actions(self):
+        if not self.current_user:
+            messagebox.showwarning("Aviso", "Você precisa estar conectado à rede para acessar as ações HPS.")
+            return
+        self.show_frame(self.hps_actions_frame)
+        self.update_nav_buttons("hps_actions")
+
     def show_network(self):
         if not self.current_user:
             messagebox.showwarning("Aviso", "Você precisa estar conectado à rede para ver a rede.")
@@ -1337,6 +2222,20 @@ class HPSBrowser:
         self.show_frame(self.network_frame)
         self.update_nav_buttons("network")
         self.refresh_network()
+
+    def show_certificates(self):
+        if not self.current_user:
+            messagebox.showwarning("Aviso", "Você precisa estar conectado à rede para ver contratos.")
+            return
+        self.show_frame(self.contracts_frame)
+        self.update_nav_buttons("certificates")
+        self.contract_filter_var.set("all")
+        self.contract_search_var.set("")
+        self.search_contracts_action()
+        self.update_certify_missing_contract_ui()
+        if self.pending_transfers:
+            self.show_contract_alert("Você está com pendências contratuais. Clique em Certificados")
+            messagebox.showwarning("Pendencias Contratuais", "Ha uma transferencia pendente para voce. Abra o contrato em vermelho para resolver.")
 
     def show_settings(self):
         self.show_frame(self.settings_frame)
@@ -1358,11 +2257,400 @@ class HPSBrowser:
         frame.pack(fill=tk.BOTH, expand=True)
 
     def update_nav_buttons(self, active_button):
+        self.active_section = active_button
         for name, button in self.nav_buttons.items():
             if name == active_button:
                 button.config(style="Accent.TButton")
             else:
                 button.config(style="TButton")
+
+    def clear_contracts_search(self):
+        self.contract_search_var.set("")
+        for item in self.contracts_tree.get_children():
+            self.contracts_tree.delete(item)
+        self.contract_details_text.config(state=tk.NORMAL)
+        self.contract_details_text.delete(1.0, tk.END)
+        self.contract_details_text.config(state=tk.DISABLED)
+
+    def search_contracts_action(self):
+        if not self.connected:
+            messagebox.showwarning("Aviso", "Conecte-se à rede primeiro.")
+            return
+        search_value = self.contract_search_var.get().strip()
+        search_type = self.contract_filter_var.get()
+        
+        self.contracts_filter_mode = search_type
+        self.contracts_filter_value = search_value
+        self.contracts_pending_details = set()
+        self.contracts_results_cache = {}
+        
+        for item in self.contracts_tree.get_children():
+            self.contracts_tree.delete(item)
+        
+        self.contract_details_text.config(state=tk.NORMAL)
+        self.contract_details_text.delete(1.0, tk.END)
+        self.contract_details_text.insert(tk.END, "Buscando contratos...")
+        self.contract_details_text.config(state=tk.DISABLED)
+        
+        if search_type == "api_app":
+            if not search_value:
+                messagebox.showwarning("Aviso", "Informe o nome do API APP para buscar.")
+                return
+            asyncio.run_coroutine_threadsafe(
+                self.sio.emit('search_contracts', {'search_type': 'all', 'search_value': ''}),
+                self.loop
+            )
+            return
+        
+        asyncio.run_coroutine_threadsafe(
+            self.sio.emit('search_contracts', {'search_type': search_type, 'search_value': search_value}),
+            self.loop
+        )
+
+    def populate_contracts_tree(self, contracts):
+        for item in self.contracts_tree.get_children():
+            self.contracts_tree.delete(item)
+        for contract in contracts:
+            timestamp = contract.get('timestamp')
+            if timestamp:
+                try:
+                    timestamp_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    timestamp_str = str(timestamp)
+            else:
+                timestamp_str = ""
+            integrity_ok = contract.get('integrity_ok')
+            if integrity_ok is None:
+                integrity_ok = contract.get('verified', False)
+            is_pending = contract.get('contract_id') in self.pending_transfers_by_contract
+            tags = ("invalid",) if not integrity_ok or is_pending else ()
+            self.contracts_tree.insert("", tk.END, values=(
+                contract.get('contract_id', ''),
+                contract.get('action_type', ''),
+                (contract.get('content_hash') or '')[:16] + "..." if contract.get('content_hash') else "",
+                contract.get('domain', '') or "",
+                contract.get('username', '') or "",
+                "Sim" if contract.get('verified') else "Não",
+                timestamp_str
+            ), tags=tags)
+
+    def on_contract_select(self, event):
+        selection = self.contracts_tree.selection()
+        if not selection:
+            return
+        item = selection[0]
+        contract_id = self.contracts_tree.item(item, 'values')[0]
+        if not contract_id:
+            return
+        contract_info = self.get_contract_from_cache(contract_id)
+        has_cached_content = bool(contract_info and contract_info.get('contract_content'))
+        if has_cached_content:
+            self.display_contract_details(contract_info)
+        asyncio.run_coroutine_threadsafe(self.sio.emit('get_contract', {'contract_id': contract_id}), self.loop)
+        if not has_cached_content:
+            self.contract_details_text.config(state=tk.NORMAL)
+            self.contract_details_text.delete(1.0, tk.END)
+            self.contract_details_text.insert(tk.END, "Carregando detalhes do contrato...")
+            self.contract_details_text.config(state=tk.DISABLED)
+
+    def open_selected_contract_analyzer(self):
+        selection = self.contracts_tree.selection()
+        if not selection:
+            messagebox.showwarning("Aviso", "Selecione um contrato para analisar.")
+            return
+        contract_id = self.contracts_tree.item(selection[0], 'values')[0]
+        if not contract_id:
+            return
+        contract_info = self.get_contract_from_cache(contract_id)
+        if contract_info and contract_info.get('contract_content'):
+            self.show_contract_analyzer(contract_info)
+            return
+        self.pending_contract_analyzer_id = contract_id
+        asyncio.run_coroutine_threadsafe(self.sio.emit('get_contract', {'contract_id': contract_id}), self.loop)
+        messagebox.showinfo("Carregando", "Buscando detalhes do contrato para analise.")
+
+    def display_contract_details(self, contract_info):
+        contract_content = contract_info.get('contract_content') or ""
+        contract_hash = hashlib.sha256(contract_content.encode('utf-8')).hexdigest() if contract_content else ""
+        verified_text = "Sim" if contract_info.get('verified') else "Não"
+        integrity_ok = contract_info.get('integrity_ok')
+        if integrity_ok is None:
+            integrity_ok = contract_info.get('verified', False)
+        integrity_text = "OK" if integrity_ok else "ADULTERADO"
+        timestamp = contract_info.get('timestamp')
+        timestamp_str = ""
+        if timestamp:
+            try:
+                timestamp_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                timestamp_str = str(timestamp)
+        
+        details = [
+            f"ID: {contract_info.get('contract_id', '')}",
+            f"Ação: {contract_info.get('action_type', '')}",
+            f"Hash do conteúdo: {contract_info.get('content_hash', '')}",
+            f"Domínio: {contract_info.get('domain', '')}",
+            f"Usuário: {contract_info.get('username', '')}",
+            f"Verificado: {verified_text}",
+            f"Integridade: {integrity_text}",
+            f"Data: {timestamp_str}",
+            f"Hash do contrato: {contract_hash}",
+            f"Assinatura: {contract_info.get('signature', '')}",
+            "",
+            "Contrato:",
+            contract_content
+        ]
+        
+        self.contract_details_text.config(state=tk.NORMAL)
+        self.contract_details_text.delete(1.0, tk.END)
+        self.contract_details_text.insert(tk.END, "\n".join(details))
+        self.contract_details_text.config(state=tk.DISABLED)
+
+    def extract_contract_details_lines(self, contract_text):
+        if not contract_text:
+            return []
+        details_lines = []
+        in_details = False
+        for line in contract_text.splitlines():
+            line = line.strip()
+            if line == "### DETAILS:":
+                in_details = True
+                continue
+            if line == "### :END DETAILS":
+                break
+            if in_details and line.startswith("# "):
+                details_lines.append(line[2:])
+        return details_lines
+
+    def build_contract_summary(self, contract_info, contract_text):
+        contract_hash = hashlib.sha256(contract_text.encode('utf-8')).hexdigest() if contract_text else ""
+        verified_text = "Sim" if contract_info.get('verified') else "Não"
+        integrity_ok = contract_info.get('integrity_ok')
+        if integrity_ok is None:
+            integrity_ok = contract_info.get('verified', False)
+        integrity_text = "OK" if integrity_ok else "ADULTERADO"
+        timestamp = contract_info.get('timestamp')
+        timestamp_str = ""
+        if timestamp:
+            try:
+                timestamp_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                timestamp_str = str(timestamp)
+        summary = [
+            f"ID: {contract_info.get('contract_id', '')}",
+            f"Ação: {contract_info.get('action_type', '')}",
+            f"Hash do conteúdo: {contract_info.get('content_hash', '')}",
+            f"Domínio: {contract_info.get('domain', '')}",
+            f"Usuário: {contract_info.get('username', '')}",
+            f"Verificado: {verified_text}",
+            f"Integridade: {integrity_text}",
+            f"Data: {timestamp_str}",
+            f"Hash do contrato: {contract_hash}",
+            ""
+        ]
+        details_lines = self.extract_contract_details_lines(contract_text)
+        if details_lines:
+            summary.append("Detalhes:")
+            summary.extend(details_lines)
+        return summary
+
+    def show_contract_analyzer(self, contract_info, title="Analisador de Contratos", allow_proceed=False):
+        contract_text = contract_info.get('contract_content') or ""
+        summary_lines = self.build_contract_summary(contract_info, contract_text)
+        integrity_ok = contract_info.get('integrity_ok')
+        if integrity_ok is None:
+            integrity_ok = contract_info.get('verified', False)
+        contract_id = contract_info.get('contract_id')
+        owner = contract_info.get('username')
+        is_owner = bool(self.current_user and owner and self.current_user == owner)
+        reissue_callback = None
+        certify_callback = None
+        invalidate_callback = None
+        transfer_accept_callback = None
+        transfer_reject_callback = None
+        transfer_renounce_callback = None
+        pending_transfer = self.pending_transfers_by_contract.get(contract_id)
+        if pending_transfer and pending_transfer.get('target_user') == self.current_user:
+            messagebox.showwarning(
+                "Transferencia Pendente",
+                f"{pending_transfer.get('original_owner')} quer transferir para voce. "
+                "Use os botoes para aceitar, rejeitar ou renunciar."
+            )
+            transfer_accept_callback = lambda: self.start_transfer_accept(pending_transfer)
+            transfer_reject_callback = lambda: self.start_transfer_reject(pending_transfer)
+            transfer_renounce_callback = lambda: self.start_transfer_renounce(pending_transfer)
+        if not integrity_ok:
+            if is_owner:
+                reissue_callback = lambda: self.start_contract_reissue(contract_info)
+            else:
+                certify_callback = lambda: self.start_contract_certify(contract_info)
+        if is_owner:
+            invalidate_callback = lambda: self.start_contract_invalidate(contract_info)
+        dialog = ContractAnalyzerDialog(
+            self.root,
+            summary_lines,
+            contract_text,
+            title=title,
+            allow_proceed=allow_proceed,
+            integrity_ok=integrity_ok,
+            verify_callback=lambda: self.refresh_contract_analyzer(contract_id),
+            reissue_callback=reissue_callback,
+            certify_callback=certify_callback,
+            invalidate_callback=invalidate_callback,
+            transfer_accept_callback=transfer_accept_callback,
+            transfer_reject_callback=transfer_reject_callback,
+            transfer_renounce_callback=transfer_renounce_callback
+        )
+        self.root.wait_window(dialog.window)
+        return dialog.proceed
+
+    def refresh_contract_analyzer(self, contract_id):
+        if not contract_id:
+            return
+        self.pending_contract_analyzer_id = contract_id
+        asyncio.run_coroutine_threadsafe(self.sio.emit('get_contract', {'contract_id': contract_id}), self.loop)
+
+    def start_contract_invalidate(self, contract_info):
+        contract_id = contract_info.get('contract_id')
+        if not contract_id:
+            return
+        def do_invalidate(pow_nonce, hashrate_observed):
+            asyncio.run_coroutine_threadsafe(
+                self.sio.emit('invalidate_contract', {
+                    'contract_id': contract_id,
+                    'pow_nonce': pow_nonce,
+                    'hashrate_observed': hashrate_observed
+                }),
+                self.loop
+            )
+        self.contract_reset_callback = do_invalidate
+        asyncio.run_coroutine_threadsafe(self.request_pow_challenge("contract_reset"), self.loop)
+
+    def start_contract_reissue(self, contract_info):
+        self.pending_contract_reissue = contract_info
+        self.start_contract_invalidate(contract_info)
+
+    def start_contract_certify(self, contract_info):
+        contract_id = contract_info.get('contract_id')
+        if not contract_id:
+            return
+        target_type = "domain" if contract_info.get('domain') else "content"
+        target_id = contract_info.get('domain') or contract_info.get('content_hash')
+        if not target_id:
+            messagebox.showerror("Erro", "Contrato sem alvo valido para certificacao.")
+            return
+        self.open_contract_certification_dialog(
+            target_type=target_type,
+            target_id=target_id,
+            reason="invalid_contract",
+            title_suffix="(Certificacao de Contrato)",
+            contract_id=contract_id,
+            original_owner=contract_info.get('username'),
+            original_action=contract_info.get('action_type')
+        )
+
+    def handle_canonical_contract(self, contract_text):
+        if not self.pending_certify_contract_id:
+            return
+        contract_id = self.pending_certify_contract_id
+        self.pending_certify_contract_id = None
+        messagebox.showwarning(
+            "Aviso",
+            "Fluxo de certificacao antigo nao esta disponivel. Abra o contrato novamente para certificar."
+        )
+
+    def handle_contract_reissue_success(self, data):
+        contract_info = getattr(self, 'pending_contract_reissue', None)
+        self.pending_contract_reissue = None
+        if not contract_info:
+            messagebox.showinfo("Contrato", "Contrato invalidado com sucesso.")
+            return
+        action_type = contract_info.get('action_type')
+        content_hash = contract_info.get('content_hash')
+        domain = contract_info.get('domain')
+        if action_type == "register_dns" and domain:
+            content_hash = self.dns_content_hash_var.get().strip() or content_hash
+            if not content_hash:
+                messagebox.showwarning("DNS", "Informe o hash do conteudo para reemitir o contrato de DNS.")
+                return
+            self.dns_domain_var.set(domain)
+            self.dns_content_hash_var.set(content_hash)
+            self.register_dns()
+            return
+        if content_hash:
+            cached = self.load_cached_content(content_hash)
+            if not cached:
+                messagebox.showwarning("Upload", "Arquivo nao encontrado no cache local para reenvio.")
+                return
+            self.upload_content_bytes(
+                cached['title'],
+                cached.get('description', ''),
+                cached.get('mime_type', 'application/octet-stream'),
+                cached['content']
+            )
+
+    def start_transfer_accept(self, pending_transfer):
+        transfer_id = pending_transfer.get('transfer_id')
+        if not transfer_id:
+            return
+        self.pending_transfer_accept_id = transfer_id
+        asyncio.run_coroutine_threadsafe(
+            self.sio.emit('get_transfer_payload', {'transfer_id': transfer_id}),
+            self.loop
+        )
+
+    def start_transfer_reject(self, pending_transfer):
+        transfer_id = pending_transfer.get('transfer_id')
+        if not transfer_id:
+            return
+        def do_reject(pow_nonce, hashrate_observed):
+            asyncio.run_coroutine_threadsafe(
+                self.sio.emit('reject_transfer', {
+                    'transfer_id': transfer_id,
+                    'pow_nonce': pow_nonce,
+                    'hashrate_observed': hashrate_observed
+                }),
+                self.loop
+            )
+        self.contract_transfer_callback = do_reject
+        asyncio.run_coroutine_threadsafe(self.request_pow_challenge("contract_transfer"), self.loop)
+
+    def start_transfer_renounce(self, pending_transfer):
+        transfer_id = pending_transfer.get('transfer_id')
+        if not transfer_id:
+            return
+        def do_renounce(pow_nonce, hashrate_observed):
+            asyncio.run_coroutine_threadsafe(
+                self.sio.emit('renounce_transfer', {
+                    'transfer_id': transfer_id,
+                    'pow_nonce': pow_nonce,
+                    'hashrate_observed': hashrate_observed
+                }),
+                self.loop
+            )
+        self.contract_transfer_callback = do_renounce
+        asyncio.run_coroutine_threadsafe(self.request_pow_challenge("contract_transfer"), self.loop)
+
+    def get_contract_from_cache(self, contract_id):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''SELECT contract_id, action_type, content_hash, domain, username, signature, timestamp, verified, contract_content
+                              FROM browser_contracts_cache WHERE contract_id = ?''', (contract_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'contract_id': row[0],
+                'action_type': row[1],
+                'content_hash': row[2],
+                'domain': row[3],
+                'username': row[4],
+                'signature': row[5],
+                'timestamp': row[6],
+                'verified': bool(row[7]),
+                'integrity_ok': bool(row[7]),
+                'contract_content': row[8]
+            }
 
     def setup_cryptography(self):
         private_key_path = os.path.join(self.crypto_dir, "private_key.pem")
@@ -1462,7 +2750,14 @@ class HPSBrowser:
                     ssl_context.check_hostname = False
                     ssl_context.verify_mode = ssl.CERT_NONE
                     
-            self.sio = socketio.AsyncClient(ssl_verify=ssl_context if ssl_context else False, reconnection=True, reconnection_attempts=5, reconnection_delay=1, reconnection_delay_max=5)
+            self.sio = socketio.AsyncClient(
+                ssl_verify=ssl_context if ssl_context else False,
+                reconnection=True,
+                reconnection_attempts=5,
+                reconnection_delay=1,
+                reconnection_delay_max=5,
+                request_timeout=120
+            )
             self.setup_socket_handlers()
             
             self.loop.run_forever()
@@ -1550,7 +2845,9 @@ class HPSBrowser:
                 logger.info("Autenticação do servidor bem-sucedida")
                 self.root.after(0, lambda: self.update_login_status("Servidor autenticado com sucesso"))
                 if self.username_var.get() and self.password_var.get():
-                    await self.request_pow_challenge("login")
+                    await self.sio.emit('request_usage_contract', {
+                        'username': self.username_var.get().strip()
+                    })
             else:
                 error = data.get('error', 'Erro desconhecido')
                 logger.error(f"Falha na autenticação do servidor: {error}")
@@ -1580,6 +2877,30 @@ class HPSBrowser:
             self.pow_solver.solve_challenge(challenge, target_bits, target_seconds, action_type)
 
         @self.sio.event
+        async def usage_contract_required(data):
+            self.root.after(0, lambda: self.start_usage_contract_flow(data))
+
+        @self.sio.event
+        async def usage_contract_status(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: self.update_login_status(f"Falha no contrato de uso: {error}"))
+                return
+            if not data.get('required', False):
+                await self.request_pow_challenge("login")
+
+        @self.sio.event
+        async def usage_contract_ack(data):
+            success = data.get('success', False)
+            if success:
+                self.root.after(0, lambda: self.update_login_status("Contrato de uso aceito. Iniciando PoW de login..."))
+                await self.request_pow_challenge("login")
+            else:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: self.update_login_status(f"Falha no contrato de uso: {error}"))
+
+        @self.sio.event
         async def authentication_result(data):
             success = data.get('success', False)
             if success:
@@ -1595,6 +2916,9 @@ class HPSBrowser:
                 
                 await self.join_network()
                 await self.sync_client_files()
+                await self.sync_client_dns_files()
+                await self.sync_client_contracts()
+                await self.request_pending_transfers()
                 
                 logger.info(f"Login bem-sucedido: {username}")
             else:
@@ -1629,8 +2953,22 @@ class HPSBrowser:
         @self.sio.event
         async def content_response(data):
             if 'error' in data:
+                if data.get('error') == 'contract_violation':
+                    self.root.after(0, lambda: self.handle_contract_blocked_content_access(data))
+                    return
                 error = data['error']
                 self.root.after(0, lambda: self.display_content_error(f"Erro no conteúdo: {error}"))
+                return
+            
+            if data.get('is_api_app_update'):
+                try:
+                    update_payload = json.loads(base64.b64decode(data.get('content', '')).decode('utf-8'))
+                except Exception:
+                    update_payload = {}
+                new_hash = update_payload.get('new_hash', '')
+                app_name = update_payload.get('app_name', '')
+                old_hash = data.get('content_hash', '')
+                self.root.after(0, lambda: self.handle_api_app_update_flow(app_name, old_hash, new_hash))
                 return
                 
             content_b64 = data.get('content')
@@ -1677,9 +3015,18 @@ class HPSBrowser:
                     'content_hash': content_hash,
                     'reputation': data.get('reputation', 100),
                     'integrity_ok': integrity_ok,
+                    'original_owner': data.get('original_owner', username),
+                    'certifier': data.get('certifier', '')
                 }
-                
-                self.root.after(0, lambda: self.display_content(content_info))
+
+                contracts = data.get('contracts', [])
+                if contracts:
+                    self.store_contracts(contracts)
+
+                content_info['contracts'] = contracts
+                content_info['contract_violation'] = data.get('contract_violation', False) or not contracts
+                content_info['contract_violation_reason'] = data.get('contract_violation_reason', '')
+                self.root.after(0, lambda: self.handle_content_contracts(content_info))
                 
             except Exception as e:
                 logger.error(f"Erro ao decodificar conteúdo: {e}")
@@ -1701,6 +3048,7 @@ class HPSBrowser:
                     self.upload_window = None
                     
                 messagebox.showinfo("Upload Concluído", f"Upload concluído com sucesso! Hash: {content_hash} Hash copiado para área de transferência!")
+                asyncio.run_coroutine_threadsafe(self.request_pending_transfers(), self.loop)
             else:
                 error = data.get('error', 'Erro desconhecido')
                 self.root.after(0, lambda: self.update_upload_status(f"Falha no upload: {error}"))
@@ -1740,6 +3088,7 @@ class HPSBrowser:
                 content_hash = data.get('content_hash')
                 username = data.get('username')
                 verified = data.get('verified', False)
+                signature = data.get('signature', '')
                 
                 self.root.after(0, lambda: self.update_dns_status(f"DNS resolvido: {domain}"))
                 self.browser_url_var.set(f"hps://{content_hash}")
@@ -1760,9 +3109,35 @@ class HPSBrowser:
                 self.save_ddns_to_storage(domain, ddns_content, {
                     'content_hash': content_hash,
                     'username': username,
-                    'verified': verified
+                    'verified': verified,
+                    'signature': signature,
+                    'public_key': ''
                 })
+                
+                contracts = data.get('contracts', [])
+                if contracts:
+                    self.store_contracts(contracts)
+                if data.get('contract_violation') or not contracts:
+                    self.report_contract_violation("domain", domain=domain, reason=data.get('contract_violation_reason', 'missing_contract'))
+                    reason = data.get('contract_violation_reason', 'missing_contract')
+                    if reason == 'invalid_contract' or reason == 'invalid_signature':
+                        messagebox.showwarning("Contrato Adulterado", "O contrato deste dominio foi adulterado ou e invalido. O servidor foi notificado.")
+                    else:
+                        messagebox.showwarning("Contrato Ausente", "Este dominio nao possui contrato valido. O servidor foi notificado.")
+                self.current_dns_info = {
+                    'domain': domain,
+                    'content_hash': content_hash,
+                    'username': username,
+                    'verified': verified,
+                    'contracts': contracts,
+                    'contract_violation': data.get('contract_violation', False) or not contracts,
+                    'original_owner': data.get('original_owner', username),
+                    'certifier': data.get('certifier', '')
+                }
             else:
+                if data.get('error') == 'contract_violation':
+                    self.root.after(0, lambda: self.handle_contract_blocked_dns_access(data))
+                    return
                 error = data.get('error', 'Erro desconhecido')
                 self.root.after(0, lambda: self.update_dns_status(f"Falha na resolução DNS: {error}"))
                 messagebox.showerror("Erro no DNS", f"Falha na resolução DNS: {error}")
@@ -1798,6 +3173,123 @@ class HPSBrowser:
             duration = data.get('duration', 300)
             reason = data.get('reason', 'Desconhecido')
             self.root.after(0, lambda: self.handle_ban(duration, reason))
+
+        @self.sio.event
+        async def contract_violation_notice(data):
+            violation_type = data.get('violation_type')
+            content_hash = data.get('content_hash')
+            domain = data.get('domain')
+            reason = data.get('reason', 'invalid_contract')
+            target = domain or content_hash or "desconhecido"
+            message = f"Contrato adulterado: {target}"
+            if reason == "missing_contract":
+                message = f"Contrato ausente: {target}"
+            logger.info(f"Aviso de violacao recebido: {data}")
+            if domain:
+                self.active_contract_violations[("domain", domain)] = reason
+            elif content_hash:
+                self.active_contract_violations[("content", content_hash)] = reason
+            else:
+                self.active_contract_violations[("unknown", target)] = reason
+            self.root.after(0, self.update_certify_missing_contract_ui)
+            self.root.after(0, lambda: self.show_contract_alert("Você está com pendências contratuais. Clique em Certificados"))
+            self.root.after(0, lambda: messagebox.showwarning("Contrato Adulterado", message))
+
+        @self.sio.event
+        async def contract_violation_cleared(data):
+            content_hash = data.get('content_hash')
+            domain = data.get('domain')
+            if domain:
+                self.active_contract_violations.pop(("domain", domain), None)
+            elif content_hash:
+                self.active_contract_violations.pop(("content", content_hash), None)
+            self.root.after(0, self.update_certify_missing_contract_ui)
+            if not self.active_contract_violations and not self.pending_transfers:
+                self.root.after(0, self.clear_contract_alert)
+
+        @self.sio.event
+        async def pending_transfers(data):
+            if 'error' in data:
+                return
+            transfers = data.get('transfers', []) or []
+            self.pending_transfers = transfers
+            self.pending_transfers_by_contract = {t.get('contract_id'): t for t in transfers if t.get('contract_id')}
+            if transfers:
+                self.root.after(0, lambda: self.show_contract_alert("Você está com pendências contratuais. Clique em Certificados"))
+                if time.time() - self.last_pending_transfer_notice > 10:
+                    self.last_pending_transfer_notice = time.time()
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Pendência Contratual",
+                        f"Você tem {len(transfers)} pendência(s) contratual(is). Abra Certificados para resolver."
+                    ))
+            else:
+                if not self.active_contract_violations:
+                    self.root.after(0, self.clear_contract_alert)
+
+        @self.sio.event
+        async def pending_transfer_notice(data):
+            count = data.get('count', 1)
+            if count > 0:
+                self.root.after(0, lambda: self.show_contract_alert("Você está com pendências contratuais. Clique em Certificados"))
+                if time.time() - self.last_pending_transfer_notice > 10:
+                    self.last_pending_transfer_notice = time.time()
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Pendência Contratual",
+                        f"Você tem {count} pendência(s) contratual(is). Abra Certificados para resolver."
+                    ))
+
+        @self.sio.event
+        async def transfer_payload(data):
+            if 'error' in data:
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao obter transferencia: {data.get('error')}"))
+                return
+            content_b64 = data.get('content_b64')
+            if not content_b64:
+                self.root.after(0, lambda: messagebox.showerror("Erro", "Arquivo de transferencia nao encontrado."))
+                return
+            try:
+                content = base64.b64decode(content_b64)
+            except Exception:
+                self.root.after(0, lambda: messagebox.showerror("Erro", "Arquivo de transferencia invalido."))
+                return
+            title = data.get('title', '')
+            description = data.get('description', '')
+            mime_type = data.get('mime_type', 'application/octet-stream')
+            self.root.after(0, lambda: self.upload_content_bytes(title, description, mime_type, content))
+
+        @self.sio.event
+        async def reject_transfer_ack(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao rejeitar transferencia: {error}"))
+                return
+            self.root.after(0, lambda: messagebox.showinfo("Transferencia", "Transferencia rejeitada."))
+            self.root.after(0, lambda: asyncio.run_coroutine_threadsafe(self.request_pending_transfers(), self.loop))
+
+        @self.sio.event
+        async def renounce_transfer_ack(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao renunciar transferencia: {error}"))
+                return
+            self.root.after(0, lambda: messagebox.showinfo("Transferencia", "Transferencia renunciada."))
+            self.root.after(0, lambda: asyncio.run_coroutine_threadsafe(self.request_pending_transfers(), self.loop))
+
+        @self.sio.event
+        async def contract_canonical(data):
+            if 'error' in data:
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao obter contrato valido: {data.get('error')}"))
+                return
+            contract_text = data.get('contract_text', '')
+            if not contract_text:
+                self.root.after(0, lambda: messagebox.showerror("Erro", "Contrato valido nao encontrado."))
+                return
+            if self.pending_missing_contract_target:
+                self.root.after(0, lambda: self.handle_missing_contract_canonical(contract_text))
+            else:
+                self.root.after(0, lambda: self.handle_canonical_contract(contract_text))
 
         @self.sio.event
         async def backup_server(data):
@@ -1838,6 +3330,22 @@ class HPSBrowser:
                 await self.share_missing_files(missing_files)
             except Exception as e:
                 logger.error(f"Erro ao processar resposta de arquivos do cliente: {e}")
+
+        @self.sio.event
+        async def client_dns_files_response(data):
+            try:
+                missing_dns = data.get('missing_dns', [])
+                await self.share_missing_dns_files(missing_dns)
+            except Exception as e:
+                logger.error(f"Erro ao processar resposta de DNS do cliente: {e}")
+
+        @self.sio.event
+        async def client_contracts_response(data):
+            try:
+                missing_contracts = data.get('missing_contracts', [])
+                await self.share_missing_contracts(missing_contracts)
+            except Exception as e:
+                logger.error(f"Erro ao processar resposta de contratos do cliente: {e}")
 
         @self.sio.event
         async def request_content_from_client(data):
@@ -1884,6 +3392,131 @@ class HPSBrowser:
                 logger.error(f"Error sharing content to network: {e}")
 
         @self.sio.event
+        async def request_ddns_from_client(data):
+            try:
+                domain = data.get('domain')
+                if not domain:
+                    return
+                await self.send_ddns_to_server(domain)
+            except Exception as e:
+                logger.error(f"Error sharing DDNS to network: {e}")
+
+        @self.sio.event
+        async def request_contract_from_client(data):
+            try:
+                contract_id = data.get('contract_id')
+                if not contract_id:
+                    return
+                await self.send_contract_to_server(contract_id)
+            except Exception as e:
+                logger.error(f"Error sharing contract to network: {e}")
+
+        @self.sio.event
+        async def ddns_from_client(data):
+            try:
+                domain = data.get('domain')
+                ddns_content_b64 = data.get('ddns_content')
+                content_hash = data.get('content_hash')
+                username = data.get('username')
+                signature = data.get('signature', '')
+                public_key = data.get('public_key', '')
+                verified = data.get('verified', False)
+                if not all([domain, ddns_content_b64, content_hash, username]):
+                    return
+                ddns_content = base64.b64decode(ddns_content_b64)
+                ddns_hash = hashlib.sha256(ddns_content).hexdigest()
+                self.save_ddns_to_storage(domain, ddns_content, {
+                    'content_hash': content_hash,
+                    'username': username,
+                    'verified': verified,
+                    'signature': signature,
+                    'public_key': public_key
+                })
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO browser_dns_records 
+                        (domain, content_hash, username, verified, timestamp, ddns_hash) 
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (domain, content_hash, username, int(bool(verified)), time.time(), ddns_hash))
+                    conn.commit()
+            except Exception as e:
+                logger.error(f"Error processing DDNS from network: {e}")
+
+        @self.sio.event
+        async def contract_from_client(data):
+            try:
+                contract_id = data.get('contract_id')
+                contract_content_b64 = data.get('contract_content')
+                if not contract_id or not contract_content_b64:
+                    return
+                contract_info = {
+                    'contract_id': contract_id,
+                    'action_type': data.get('action_type', ''),
+                    'content_hash': data.get('content_hash'),
+                    'domain': data.get('domain'),
+                    'username': data.get('username', ''),
+                    'signature': data.get('signature', ''),
+                    'verified': data.get('verified', False),
+                    'timestamp': time.time(),
+                    'contract_content': base64.b64decode(contract_content_b64).decode('utf-8', errors='replace')
+                }
+                self.save_contract_to_storage(contract_info)
+            except Exception as e:
+                logger.error(f"Error processing contract from network: {e}")
+
+        @self.sio.event
+        async def contracts_results(data):
+            try:
+                if 'error' in data:
+                    return
+                contracts = data.get('contracts', [])
+                if self.contracts_filter_mode == "api_app":
+                    for contract in contracts:
+                        contract_id = contract.get('contract_id')
+                        if contract_id:
+                            self.contracts_pending_details.add(contract_id)
+                            await self.sio.emit('get_contract', {'contract_id': contract_id})
+                    return
+                if contracts:
+                    self.store_contracts(contracts)
+                self.populate_contracts_tree(contracts)
+            except Exception as e:
+                logger.error(f"Error processing contracts results: {e}")
+
+        @self.sio.event
+        async def contract_details(data):
+            try:
+                if 'error' in data:
+                    return
+                contract_info = data.get('contract')
+                if contract_info:
+                    self.save_contract_to_storage(contract_info)
+                    contract_id = contract_info.get('contract_id')
+                    if self.pending_contract_analyzer_id == contract_id:
+                        self.pending_contract_analyzer_id = None
+                        self.root.after(0, lambda: self.show_contract_analyzer(contract_info))
+                    if self.contracts_filter_mode == "api_app" and contract_id in self.contracts_pending_details:
+                        contract_text = contract_info.get('contract_content', '') or ''
+                        app_name = self.contracts_filter_value.strip()
+                        if app_name and f"# APP: {app_name}".lower() in contract_text.lower():
+                            self.contracts_results_cache[contract_id] = contract_info
+                            self.populate_contracts_tree(list(self.contracts_results_cache.values()))
+                        self.contracts_pending_details.discard(contract_id)
+                        return
+                    selection = self.contracts_tree.selection()
+                    if selection:
+                        current_id = self.contracts_tree.item(selection[0], 'values')[0]
+                        if current_id == contract_id:
+                            self.display_contract_details(contract_info)
+            except Exception as e:
+                logger.error(f"Error processing contract details: {e}")
+
+        @self.sio.event
+        async def api_app_versions(data):
+            self.root.after(0, lambda: self.handle_api_app_versions_response(data))
+
+        @self.sio.event
         async def report_result(data):
             success = data.get('success', False)
             if success:
@@ -1894,7 +3527,27 @@ class HPSBrowser:
                 error = data.get('error', 'Erro desconhecido')
                 self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha no reporte: {error}"))
                 logger.error(f"Falha no reporte: {error}")
-                if 'blocked_until' in data:
+
+        @self.sio.event
+        async def invalidate_contract_ack(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao invalidar contrato: {error}"))
+                return
+            self.root.after(0, self.clear_contract_alert)
+            self.root.after(0, lambda: self.handle_contract_reissue_success(data))
+
+        @self.sio.event
+        async def certify_contract_ack(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao certificar contrato: {error}"))
+                return
+            self.root.after(0, self.clear_contract_alert)
+            self.root.after(0, lambda: messagebox.showinfo("Certificacao", "Contrato certificado com sucesso."))
+            if 'blocked_until' in data:
                     blocked_until = data['blocked_until']
                     duration = blocked_until - time.time()
                     self.root.after(0, lambda: self.handle_report_block(duration))
@@ -1902,6 +3555,16 @@ class HPSBrowser:
             if self.report_window and self.report_window.window.winfo_exists():
                 self.report_window.destroy()
                 self.report_window = None
+
+        @self.sio.event
+        async def certify_missing_contract_ack(data):
+            success = data.get('success', False)
+            if not success:
+                error = data.get('error', 'Erro desconhecido')
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha ao certificar contrato: {error}"))
+                return
+            self.root.after(0, self.clear_contract_alert)
+            self.root.after(0, lambda: messagebox.showinfo("Certificacao", "Contrato certificado com sucesso."))
 
     async def process_client_files_sync(self, files):
         content_hashes = [file['content_hash'] for file in files]
@@ -1916,6 +3579,110 @@ class HPSBrowser:
                 await self.sio.emit('request_content_from_client', {'content_hash': content_hash})
                 await asyncio.sleep(0.1)
 
+    async def process_client_dns_files_sync(self, dns_files):
+        domains = [dns_file['domain'] for dns_file in dns_files]
+        if not domains:
+            return
+        await self.sio.emit('request_client_dns_files', {
+            'domains': domains
+        })
+
+    async def share_missing_dns_files(self, missing_dns):
+        for domain in missing_dns:
+            await self.send_ddns_to_server(domain)
+            await asyncio.sleep(0.1)
+
+    async def process_client_contracts_sync(self, contracts):
+        contract_ids = [contract['contract_id'] for contract in contracts]
+        if not contract_ids:
+            return
+        await self.sio.emit('request_client_contracts', {
+            'contract_ids': contract_ids,
+            'contracts': contracts
+        })
+
+    async def share_missing_contracts(self, missing_contracts):
+        for contract_id in missing_contracts:
+            await self.send_contract_to_server(contract_id)
+            await asyncio.sleep(0.1)
+
+    def get_ddns_record(self, domain):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''SELECT ddns_hash, content_hash, username, verified, signature, public_key
+                              FROM browser_ddns_cache WHERE domain = ?''', (domain,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'ddns_hash': row[0],
+                'content_hash': row[1],
+                'username': row[2],
+                'verified': bool(row[3]),
+                'signature': row[4] or '',
+                'public_key': row[5] or ''
+            }
+
+    async def send_ddns_to_server(self, domain):
+        record = self.get_ddns_record(domain)
+        if not record:
+            return
+        ddns_file_path = os.path.join(self.crypto_dir, "ddns", f"{record['ddns_hash']}.ddns")
+        if not os.path.exists(ddns_file_path):
+            return
+        with open(ddns_file_path, 'rb') as f:
+            ddns_content = f.read()
+        await self.sio.emit('ddns_from_client', {
+            'domain': domain,
+            'ddns_content': base64.b64encode(ddns_content).decode('utf-8'),
+            'content_hash': record['content_hash'],
+            'username': record['username'],
+            'signature': record['signature'],
+            'public_key': record['public_key'],
+            'verified': record['verified']
+        })
+
+    def get_contract_record(self, contract_id):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''SELECT action_type, content_hash, domain, username, signature, verified, contract_content
+                              FROM browser_contracts_cache WHERE contract_id = ?''', (contract_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'action_type': row[0],
+                'content_hash': row[1],
+                'domain': row[2],
+                'username': row[3],
+                'signature': row[4] or '',
+                'verified': bool(row[5]),
+                'contract_content': row[6]
+            }
+
+    async def send_contract_to_server(self, contract_id):
+        record = self.get_contract_record(contract_id)
+        if not record:
+            return
+        contracts_dir = os.path.join(self.crypto_dir, "contracts")
+        contract_path = os.path.join(contracts_dir, f"{contract_id}.contract")
+        contract_text = record.get('contract_content')
+        if os.path.exists(contract_path):
+            with open(contract_path, 'rb') as f:
+                contract_text = f.read().decode('utf-8', errors='replace')
+        if not contract_text:
+            return
+        await self.sio.emit('contract_from_client', {
+            'contract_id': contract_id,
+            'contract_content': base64.b64encode(contract_text.encode('utf-8')).decode('utf-8'),
+            'action_type': record.get('action_type', ''),
+            'content_hash': record.get('content_hash'),
+            'domain': record.get('domain'),
+            'username': record.get('username', ''),
+            'signature': record.get('signature', ''),
+            'verified': record.get('verified', False)
+        })
+
     async def request_pow_challenge(self, action_type):
         if not self.connected:
             return
@@ -1924,6 +3691,11 @@ class HPSBrowser:
             'client_identifier': self.client_identifier,
             'action_type': action_type
         })
+
+    async def request_pending_transfers(self):
+        if not self.connected:
+            return
+        await self.sio.emit('get_pending_transfers', {})
 
     async def send_authentication(self, pow_nonce, hashrate_observed):
         if not self.connected:
@@ -1989,6 +3761,68 @@ class HPSBrowser:
             'files': files
         })
 
+    async def sync_client_dns_files(self):
+        if not self.connected or not self.current_user:
+            return
+        dns_files = []
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT domain, ddns_hash FROM browser_ddns_cache')
+            for row in cursor.fetchall():
+                dns_files.append({'domain': row[0], 'ddns_hash': row[1]})
+        await self.sio.emit('sync_client_dns_files', {
+            'dns_files': dns_files
+        })
+        await self.process_client_dns_files_sync(dns_files)
+
+    async def sync_client_contracts(self):
+        if not self.connected or not self.current_user:
+            return
+        contracts = []
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT contract_id, content_hash, domain FROM browser_contracts_cache')
+            for row in cursor.fetchall():
+                contracts.append({
+                    'contract_id': row[0],
+                    'content_hash': row[1],
+                    'domain': row[2]
+                })
+        await self.sio.emit('sync_client_contracts', {
+            'contracts': contracts
+        })
+        await self.process_client_contracts_sync(contracts)
+
+    def show_custody_blocked_popup(self):
+        message = 'O nome de usuário "custody" é de uso especial para a administração do servidor.'
+        window = tk.Toplevel(self.root)
+        window.title("Nome de usuario reservado")
+        window.geometry("520x180")
+        window.transient(self.root)
+        window.grab_set()
+        container, main_frame = create_scrollable_container(window, padding="15")
+        container.pack(fill=tk.BOTH, expand=True)
+        background = window.cget("bg")
+        label = tk.Label(
+            main_frame,
+            text=message,
+            font=("Arial", 12, "bold"),
+            fg="red",
+            bg=background,
+            wraplength=480,
+            justify=tk.CENTER
+        )
+        label.pack(pady=20, padx=10, fill=tk.BOTH, expand=True)
+        ttk.Button(main_frame, text="Fechar", command=window.destroy).pack(pady=10)
+
+        def blink(state=True):
+            if not window.winfo_exists():
+                return
+            label.config(fg="red" if state else background)
+            window.after(500, lambda: blink(not state))
+
+        blink()
+
     def enter_network(self):
         if self.connected:
             messagebox.showinfo("Info", "Você já está conectado à rede.")
@@ -2001,6 +3835,10 @@ class HPSBrowser:
             
         if not self.username_var.get() or not self.password_var.get():
             messagebox.showwarning("Aviso", "Por favor, preencha nome de usuário e senha.")
+            return
+
+        if self.username_var.get().strip().lower() == "custody":
+            self.show_custody_blocked_popup()
             return
             
         self.current_server = server_address
@@ -2097,18 +3935,109 @@ class HPSBrowser:
         self.banned_until = time.time() + duration
         self.ban_duration = duration
         self.ban_reason = reason
-        self.ban_status_var.set(f"Banido por {int(duration)}s: {reason}")
+        self.ban_status_message = f"Banido por {int(duration)}s: {reason}"
+        self._apply_status_message(self.ban_status_message)
         
         def update_ban_timer():
             if self.banned_until and time.time() < self.banned_until:
                 remaining = int(self.banned_until - time.time())
-                self.ban_status_var.set(f"Banido por {remaining}s: {reason}")
+                self.ban_status_message = f"Banido por {remaining}s: {reason}"
+                self._apply_status_message(self.ban_status_message)
                 self.root.after(1000, update_ban_timer)
             else:
                 self.banned_until = None
-                self.ban_status_var.set("")
+                self.ban_status_message = ""
+                if self.contract_alert_active:
+                    self._apply_status_message(self.contract_alert_message)
+                else:
+                    self.ban_status_var.set("")
                 
         update_ban_timer()
+
+    def show_contract_alert(self, message):
+        self.contract_alert_active = True
+        self.contract_alert_message = message
+        self.contract_alert_blink = False
+        self._blink_contract_alert()
+
+    def clear_contract_alert(self):
+        self.contract_alert_active = False
+        if not self.banned_until:
+            self.ban_status_var.set("")
+            self.ban_status_label.config(foreground="red")
+        elif self.ban_status_message:
+            self._apply_status_message(self.ban_status_message)
+
+    def _blink_contract_alert(self):
+        if not self.contract_alert_active:
+            return
+        self.contract_alert_blink = not self.contract_alert_blink
+        self.ban_status_label.config(foreground="red")
+        self._apply_status_message(self.contract_alert_message)
+        self.root.after(1000, self._blink_contract_alert)
+
+    def _apply_status_message(self, message):
+        if self.contract_alert_active:
+            if self.contract_alert_blink:
+                if self.banned_until and time.time() < self.banned_until and self.ban_status_message:
+                    combined = f"{self.ban_status_message} | {self.contract_alert_message}"
+                    self.ban_status_var.set(combined)
+                else:
+                    self.ban_status_var.set(self.contract_alert_message)
+            else:
+                if self.banned_until and time.time() < self.banned_until and self.ban_status_message:
+                    self.ban_status_var.set(self.ban_status_message)
+                else:
+                    self.ban_status_var.set("")
+            return
+        self.ban_status_var.set(message)
+
+    def update_certify_missing_contract_ui(self):
+        invalidated_targets = [
+            key for key, reason in self.active_contract_violations.items()
+            if reason == "missing_contract"
+        ]
+        if not invalidated_targets:
+            if self.invalidated_contract_frame.winfo_ismapped():
+                self.invalidated_contract_frame.pack_forget()
+            return
+        if not self.invalidated_contract_frame.winfo_ismapped():
+            self.invalidated_contract_frame.pack(fill=tk.X, pady=5)
+        if len(invalidated_targets) == 1:
+            target_type, target_id = invalidated_targets[0]
+            self.invalidated_contract_type_var.set(target_type)
+            self.invalidated_contract_hash_var.set(target_id)
+
+    def start_missing_contract_certify(self):
+        target_id = self.invalidated_contract_hash_var.get().strip()
+        if not target_id:
+            messagebox.showwarning("Aviso", "Informe o hash do arquivo para certificar.")
+            return
+        target_type = self.invalidated_contract_type_var.get()
+        if target_type == "content" and len(target_id) < 32:
+            messagebox.showwarning("Aviso", "Hash inválido.")
+            return
+        if target_type == "domain":
+            target_id = target_id.lower()
+        self.open_contract_certification_dialog(
+            target_type=target_type,
+            target_id=target_id,
+            reason="missing_contract",
+            title_suffix="(Certificacao de Contrato Ausente)"
+        )
+
+    def handle_missing_contract_canonical(self, contract_text):
+        target = self.pending_missing_contract_target
+        if not target:
+            return
+        target_type, target_id = target
+        self.pending_missing_contract_target = None
+        self.open_contract_certification_dialog(
+            target_type=target_type,
+            target_id=target_id,
+            reason="missing_contract",
+            title_suffix="(Certificacao de Contrato Ausente)"
+        )
 
     def handle_upload_block(self, duration):
         self.upload_blocked_until = time.time() + duration
@@ -2228,6 +4157,14 @@ class HPSBrowser:
         self.browser_content.config(state=tk.NORMAL)
         self.browser_content.delete(1.0, tk.END)
         
+        if content_info.get('local_only'):
+            self.browser_content.insert(
+                tk.END,
+                "⚠ ALERTA: Conteúdo local exibido porque o servidor bloqueou o acesso por quebra de contrato.\n",
+                "unverified"
+            )
+        if content_info.get('contract_violation'):
+            self.browser_content.insert(tk.END, "⚠ ALERTA: Este arquivo esta sem contrato valido e pode estar violado.", "unverified")
         if not integrity_ok:
             self.browser_content.insert(tk.END, "⚠ ATENÇÃO: Este conteúdo foi adulterado no servidor. A integridade não pode ser garantida.", "unverified")
         elif not verified:
@@ -2260,11 +4197,246 @@ class HPSBrowser:
             
         self.browser_content.config(state=tk.DISABLED)
 
+    def report_contract_violation(self, violation_type, content_hash=None, domain=None, reason="missing_contract"):
+        key = (violation_type, content_hash or domain)
+        if key in self.reported_contract_issues:
+            return
+        self.reported_contract_issues.add(key)
+        if not self.connected:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self.sio.emit('contract_violation', {
+                'violation_type': violation_type,
+                'content_hash': content_hash,
+                'domain': domain,
+                'reason': reason
+            }),
+            self.loop
+        )
+
+    def handle_content_contracts(self, content_info):
+        contracts = content_info.get('contracts', []) or []
+        title = content_info.get('title', '')
+        content_hash = content_info.get('content_hash', '')
+        contract_violation = content_info.get('contract_violation', False)
+
+        if contract_violation:
+            self.report_contract_violation(
+                "content",
+                content_hash=content_hash,
+                reason=content_info.get('contract_violation_reason', 'missing_contract')
+            )
+            reason = content_info.get('contract_violation_reason', 'missing_contract')
+            if reason == 'invalid_contract' or reason == 'invalid_signature':
+                messagebox.showwarning("Contrato Adulterado", "O contrato deste arquivo foi adulterado ou e invalido. O servidor foi notificado.")
+            else:
+                messagebox.showwarning("Contrato Ausente", "Este arquivo nao possui contrato valido. O servidor foi notificado.")
+
+        if title == '(HPS!dns_change){change_dns_owner=true, proceed=true}':
+            transfer_contract = None
+            for contract in contracts:
+                if contract.get('action_type') == 'transfer_domain':
+                    transfer_contract = contract
+                    break
+            if not transfer_contract:
+                self.report_contract_violation("content", content_hash=content_hash, reason="missing_transfer_contract")
+                messagebox.showwarning("Transferencia de Dominio", "Contrato de transferencia nao encontrado. O servidor foi notificado.")
+                self.display_content(content_info)
+                return
+            proceed = self.show_contract_analyzer(
+                transfer_contract,
+                title="Transferencia de Dominio - Contrato",
+                allow_proceed=True
+            )
+            if proceed:
+                self.display_content(content_info)
+            return
+
+        app_name = self.extract_app_name(title)
+        if app_name or title.startswith('(HPS!api)'):
+            self.request_api_app_versions(app_name, title, content_info.get('content_hash'), content_info=content_info)
+            return
+
+        self.display_content(content_info)
+
+    def handle_api_app_update_flow(self, app_name, old_hash, new_hash):
+        self.request_api_app_versions(
+            app_name,
+            "",
+            old_hash,
+            content_info=None,
+            fallback_hash=new_hash,
+            allow_legacy=True
+        )
+
+    def request_api_app_versions(self, app_name, title, current_hash, content_info=None, fallback_hash=None, allow_legacy=False):
+        if not self.connected:
+            return
+        request_id = str(uuid.uuid4())
+        self.pending_api_app_requests[request_id] = {
+            'app_name': app_name,
+            'title': title,
+            'current_hash': current_hash,
+            'content_info': content_info,
+            'fallback_hash': fallback_hash,
+            'allow_legacy': allow_legacy
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.sio.emit('get_api_app_versions', {
+                'request_id': request_id,
+                'title': title,
+                'app_name': app_name
+            }),
+            self.loop
+        )
+
+    def handle_api_app_versions_response(self, data):
+        request_id = data.get('request_id')
+        request = self.pending_api_app_requests.pop(request_id, None)
+        if not request:
+            return
+        if data.get('success') is False or data.get('error'):
+            messagebox.showwarning("API App", f"Falha ao buscar versoes: {data.get('error', 'erro desconhecido')}")
+            if request.get('content_info'):
+                self.display_content(request['content_info'])
+            elif request.get('fallback_hash'):
+                self.browser_url_var.set(f"hps://{request['fallback_hash']}")
+                self.request_content_by_hash(request['fallback_hash'])
+            return
+        versions = data.get('versions', []) or []
+        latest_hash = data.get('latest_hash')
+        app_name = request.get('app_name') or request.get('title') or data.get('app_name') or "API App"
+        current_hash = request.get('current_hash')
+        content_info = request.get('content_info')
+        fallback_hash = request.get('fallback_hash')
+        allow_legacy = request.get('allow_legacy', False)
+
+        if not versions:
+            messagebox.showwarning("API App", "Nao foi possivel localizar contratos de versao para este app.")
+            if fallback_hash:
+                self.browser_url_var.set(f"hps://{fallback_hash}")
+                self.request_content_by_hash(fallback_hash)
+            elif content_info:
+                self.display_content(content_info)
+            return
+
+        if latest_hash and current_hash == latest_hash and content_info:
+            notice = ApiAppNoticeDialog(self.root, app_name, is_latest=True)
+            self.root.wait_window(notice.window)
+            if notice.analyze_versions:
+                self.open_api_app_versions_dialog(app_name, versions, current_hash, content_info, latest_hash, allow_legacy)
+                return
+            if notice.proceed:
+                self.display_content(content_info)
+                return
+            self.display_content(content_info)
+            return
+
+        self.open_api_app_versions_dialog(app_name, versions, current_hash, content_info, latest_hash, allow_legacy, fallback_hash)
+
+    def open_api_app_versions_dialog(self, app_name, versions, current_hash, content_info, latest_hash, allow_legacy, fallback_hash=None):
+        dialog = ApiAppVersionsDialog(self.root, app_name, versions, current_hash)
+        self.root.wait_window(dialog.window)
+        if dialog.selected_hash:
+            selected_hash = dialog.selected_hash
+            self.browser_url_var.set(f"hps://{selected_hash}")
+            if latest_hash and selected_hash != latest_hash:
+                self.add_to_history(f"hps://{selected_hash}")
+                asyncio.run_coroutine_threadsafe(
+                    self._request_content_by_hash(selected_hash, allow_legacy=True),
+                    self.loop
+                )
+            else:
+                self.request_content_by_hash(selected_hash)
+            return
+        if dialog.proceed_current and current_hash:
+            self.browser_url_var.set(f"hps://{current_hash}")
+            if allow_legacy:
+                self.add_to_history(f"hps://{current_hash}")
+                asyncio.run_coroutine_threadsafe(
+                    self._request_content_by_hash(current_hash, allow_legacy=True),
+                    self.loop
+                )
+            else:
+                self.request_content_by_hash(current_hash)
+            return
+        if content_info:
+            self.display_content(content_info)
+            return
+        if fallback_hash:
+            self.browser_url_var.set(f"hps://{fallback_hash}")
+            self.request_content_by_hash(fallback_hash)
+
     def display_content_error(self, error):
         self.browser_content.config(state=tk.NORMAL)
         self.browser_content.delete(1.0, tk.END)
         self.browser_content.insert(tk.END, f"Erro: {error}")
         self.browser_content.config(state=tk.DISABLED)
+
+    def show_contract_blocked_dialog(self, message):
+        dialog = ContractBlockedDialog(self.root, message)
+        self.root.wait_window(dialog.window)
+        return dialog.proceed
+
+    def get_cached_dns_hash(self, domain):
+        if not domain:
+            return None
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT content_hash FROM browser_dns_records WHERE domain = ?', (domain,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def handle_contract_blocked_content_access(self, data):
+        content_hash = data.get('content_hash', '')
+        reason = data.get('contract_violation_reason', 'contract_violation')
+        message = "Contrato adulterado ou ausente. O conteudo foi bloqueado no servidor."
+        if reason == "missing_contract":
+            message = "Contrato ausente. O conteudo foi bloqueado no servidor."
+        proceed = self.show_contract_blocked_dialog(message)
+        if not proceed:
+            return
+        cached = self.load_cached_content(content_hash) if content_hash else None
+        if not cached:
+            self.display_content_error("Not Found")
+            return
+        cached['contract_violation'] = True
+        cached['contract_violation_reason'] = reason
+        cached['contract_blocked'] = True
+        cached['local_only'] = True
+        cached['contracts'] = data.get('contracts', [])
+        cached['certifier'] = data.get('certifier', '')
+        cached['original_owner'] = data.get('original_owner', cached.get('username', ''))
+        self.display_content(cached)
+
+    def handle_contract_blocked_dns_access(self, data):
+        domain = data.get('domain', '')
+        reason = data.get('contract_violation_reason', 'contract_violation')
+        message = "Contrato adulterado ou ausente. O dominio foi bloqueado no servidor."
+        if reason == "missing_contract":
+            message = "Contrato ausente. O dominio foi bloqueado no servidor."
+        proceed = self.show_contract_blocked_dialog(message)
+        self.current_dns_info = {
+            'domain': domain,
+            'content_hash': data.get('content_hash', ''),
+            'contract_blocked': True,
+            'contract_violation_reason': reason
+        }
+        if not proceed:
+            return
+        content_hash = data.get('content_hash') or self.get_cached_dns_hash(domain)
+        cached = self.load_cached_content(content_hash) if content_hash else None
+        if not cached:
+            self.display_content_error("Not Found")
+            return
+        cached['contract_violation'] = True
+        cached['contract_violation_reason'] = reason
+        cached['contract_blocked'] = True
+        cached['local_only'] = True
+        cached['contracts'] = data.get('contracts', [])
+        cached['certifier'] = data.get('certifier', '')
+        cached['original_owner'] = data.get('original_owner', cached.get('username', ''))
+        self.display_content(cached)
 
     def handle_content_click(self, event):
         index = self.browser_content.index(f"@{event.x},{event.y}")
@@ -2282,7 +4454,9 @@ class HPSBrowser:
                 break
 
     def show_security_dialog(self):
-        if self.current_content_info:
+        if self.active_section == "dns" and self.current_dns_info:
+            DomainSecurityDialog(self.root, self.current_dns_info, self)
+        elif self.current_content_info:
             ContentSecurityDialog(self.root, self.current_content_info, self)
         else:
             messagebox.showinfo("Segurança", "Nenhum conteúdo carregado para verificar.")
@@ -2307,11 +4481,11 @@ class HPSBrowser:
         self.add_to_history(f"hps://{content_hash}")
         asyncio.run_coroutine_threadsafe(self._request_content_by_hash(content_hash), self.loop)
 
-    async def _request_content_by_hash(self, content_hash):
+    async def _request_content_by_hash(self, content_hash, allow_legacy=False):
         if not self.connected:
             return
             
-        await self.sio.emit('request_content', {'content_hash': content_hash})
+        await self.sio.emit('request_content', {'content_hash': content_hash, 'allow_legacy': allow_legacy})
 
     def resolve_dns_url(self, domain):
         self.add_to_history(f"hps://dns:{domain}")
@@ -2353,6 +4527,38 @@ class HPSBrowser:
             
         logger.info(f"Conteúdo salvo em: {file_path}")
 
+    def load_cached_content(self, content_hash):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''SELECT file_path, title, description, mime_type, username, signature, public_key, verified
+                              FROM browser_content_cache WHERE content_hash = ?''', (content_hash,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            file_path, title, description, mime_type, username, signature, public_key, verified = row
+        if not file_path or not os.path.exists(file_path):
+            return None
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            actual_hash = hashlib.sha256(content).hexdigest()
+            integrity_ok = actual_hash == content_hash
+            return {
+                'title': title or 'Sem título',
+                'description': description or '',
+                'mime_type': mime_type or 'application/octet-stream',
+                'username': username or 'Desconhecido',
+                'signature': signature or '',
+                'public_key': public_key or '',
+                'verified': bool(verified),
+                'content': content,
+                'content_hash': content_hash,
+                'reputation': 0,
+                'integrity_ok': integrity_ok
+            }
+        except Exception:
+            return None
+
     def save_ddns_to_storage(self, domain, ddns_content, metadata=None):
         ddns_dir = os.path.join(self.crypto_dir, "ddns")
         os.makedirs(ddns_dir, exist_ok=True)
@@ -2367,19 +4573,65 @@ class HPSBrowser:
             if metadata:
                 cursor.execute('''
                     INSERT OR REPLACE INTO browser_ddns_cache 
-                    (domain, ddns_hash, content_hash, username, verified, timestamp) 
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (domain, ddns_hash, content_hash, username, verified, timestamp, signature, public_key) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     domain, ddns_hash,
                     metadata.get('content_hash', ''),
                     metadata.get('username', ''),
                     metadata.get('verified', 0),
-                    time.time()
+                    time.time(),
+                    metadata.get('signature', ''),
+                    metadata.get('public_key', '')
                 ))
             conn.commit()
             
         logger.info(f"DDNS salvo em: {file_path}")
         return ddns_hash
+
+    def save_contract_to_storage(self, contract_info):
+        contract_id = contract_info.get('contract_id')
+        if not contract_id:
+            return
+        contract_content = contract_info.get('contract_content')
+        contract_text = None
+        if isinstance(contract_content, bytes):
+            contract_text = contract_content.decode('utf-8', errors='replace')
+        elif isinstance(contract_content, str):
+            contract_text = contract_content
+
+        if contract_text:
+            contracts_dir = os.path.join(self.crypto_dir, "contracts")
+            os.makedirs(contracts_dir, exist_ok=True)
+            contract_path = os.path.join(contracts_dir, f"{contract_id}.contract")
+            with open(contract_path, 'wb') as f:
+                f.write(contract_text.encode('utf-8'))
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            verified_value = contract_info.get('integrity_ok')
+            if verified_value is None:
+                verified_value = contract_info.get('verified')
+            cursor.execute('''
+                INSERT OR REPLACE INTO browser_contracts_cache
+                (contract_id, action_type, content_hash, domain, username, signature, timestamp, verified, contract_content)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                contract_id,
+                contract_info.get('action_type', ''),
+                contract_info.get('content_hash'),
+                contract_info.get('domain'),
+                contract_info.get('username', ''),
+                contract_info.get('signature', ''),
+                contract_info.get('timestamp', time.time()),
+                1 if verified_value else 0,
+                contract_text
+            ))
+            conn.commit()
+
+    def store_contracts(self, contracts):
+        for contract_info in contracts or []:
+            self.save_contract_to_storage(contract_info)
 
     def create_ddns_file(self, domain, content_hash):
         ddns_content = f"""# HSYST P2P SERVICE
@@ -2392,6 +4644,354 @@ class HPSBrowser:
 ### :END DNS
 """
         return ddns_content.encode('utf-8')
+
+    def build_contract_template(self, action_type, details):
+        lines = [
+            "# HSYST P2P SERVICE",
+            "## CONTRACT:",
+            "### DETAILS:",
+            f"# ACTION: {action_type}"
+        ]
+        for key, value in details:
+            lines.append(f"# {key}: {value}")
+        lines.extend([
+            "### :END DETAILS",
+            "### START:",
+            f"# USER: {self.current_user}",
+            "# SIGNATURE: ",
+            "### :END START",
+            "## :END CONTRACT"
+        ])
+        return "\n".join(lines) + "\n"
+
+    def build_hps_transfer_title(self, transfer_type, target_user, app_name=None):
+        if transfer_type == "api_app" and app_name:
+            return f"(HPS!transfer){{type={transfer_type}, to={target_user}, app={app_name}}}"
+        return f"(HPS!transfer){{type={transfer_type}, to={target_user}}}"
+
+    def build_hps_api_title(self, app_name):
+        return f'(HPS!api){{app}}:{{"{app_name}"}}'
+
+    def build_hps_dns_change_title(self):
+        return "(HPS!dns_change){change_dns_owner=true, proceed=true}"
+
+    def build_domain_transfer_payload(self, domain, new_owner):
+        username = self.current_user or self.username_var.get().strip()
+        lines = [
+            "# HSYST P2P SERVICE",
+            "### START:",
+            f"# USER: {username}",
+            "### :END START",
+            "### DNS:",
+            f"# NEW_DNAME: DOMAIN = {domain}",
+            f"# NEW_DOWNER: OWNER = {new_owner}",
+            "### :END DNS",
+            "### MODIFY:",
+            "# change_dns_owner = true",
+            "# proceed = true",
+            "### :END MODIFY"
+        ]
+        return "\n".join(lines).encode("utf-8")
+
+    def apply_hps_action_template(self):
+        action = self.hps_action_var.get()
+        target_user = self.hps_target_user_var.get().strip()
+        app_name = self.hps_app_name_var.get().strip()
+        domain = self.hps_domain_var.get().strip()
+        new_owner = self.hps_new_owner_var.get().strip()
+        content_hash = self.hps_content_hash_var.get().strip()
+
+        if action == "Transferir arquivo":
+            if not target_user:
+                messagebox.showwarning("Aviso", "Informe o usuario destino.")
+                return
+            if not content_hash or len(content_hash) < 32:
+                messagebox.showwarning("Aviso", "Informe o hash do conteudo para transferir.")
+                return
+            cached = self.load_cached_content(content_hash)
+            if not cached:
+                messagebox.showwarning("Aviso", "Conteudo nao encontrado no cache local. Baixe o arquivo antes de transferir.")
+                return
+            temp_path = os.path.join(tempfile.gettempdir(), f"hps_transfer_{content_hash}.dat")
+            with open(temp_path, "wb") as f:
+                f.write(cached['content'])
+            self.upload_title_var.set(self.build_hps_transfer_title("file", target_user))
+            self.upload_file_var.set(temp_path)
+            self.upload_mime_var.set(cached.get('mime_type', 'application/octet-stream'))
+            self.upload_description_var.set(cached.get('description', ''))
+            self.show_upload()
+            return
+        if action == "Transferir API App":
+            if not target_user or not app_name:
+                messagebox.showwarning("Aviso", "Informe o usuario destino e o nome do app.")
+                return
+            self.upload_title_var.set(self.build_hps_transfer_title("api_app", target_user, app_name))
+            self.show_upload()
+            return
+        if action == "Criar/Atualizar API App":
+            if not app_name:
+                messagebox.showwarning("Aviso", "Informe o nome do app.")
+                return
+            self.upload_title_var.set(self.build_hps_api_title(app_name))
+            self.show_upload()
+            return
+        if action == "Transferir dominio":
+            if not domain or not new_owner:
+                messagebox.showwarning("Aviso", "Informe o dominio e o novo dono.")
+                return
+            self.upload_title_var.set(self.build_hps_dns_change_title())
+            payload = self.build_domain_transfer_payload(domain, new_owner)
+            temp_path = os.path.join(tempfile.gettempdir(), f"hps_domain_transfer_{domain}.txt")
+            with open(temp_path, "wb") as f:
+                f.write(payload)
+            self.upload_file_var.set(temp_path)
+            self.upload_mime_var.set("text/plain")
+            self.show_upload()
+            return
+
+    def build_usage_contract_template(self, terms_text, contract_hash):
+        username = self.current_user or self.username_var.get().strip()
+        lines = [
+            "# HSYST P2P SERVICE",
+            "## CONTRACT:",
+            "### DETAILS:",
+            "# ACTION: accept_usage",
+            f"# USAGE_CONTRACT_HASH: {contract_hash}",
+            "### :END DETAILS",
+            "### TERMS:"
+        ]
+        for line in terms_text.splitlines():
+            lines.append(f"# {line}")
+        lines.extend([
+            "### :END TERMS",
+            "### START:",
+            f"# USER: {username}",
+            "# SIGNATURE: ",
+            "### :END START",
+            "## :END CONTRACT"
+        ])
+        return "\n".join(lines) + "\n"
+
+    def start_usage_contract_flow(self, data):
+        terms_text = data.get('contract_text', '') or ""
+        contract_hash = data.get('contract_hash', '')
+        if not contract_hash:
+            messagebox.showerror("Contrato de Uso", "Contrato de uso nao disponivel no servidor.")
+            return
+        contract_template = self.build_usage_contract_template(terms_text, contract_hash)
+        contract_dialog = ContractDialog(
+            self.root,
+            contract_template,
+            title_suffix="(Contrato de Uso)",
+            signer=lambda text: self.apply_contract_signature(text)[0]
+        )
+        self.root.wait_window(contract_dialog.window)
+        if not contract_dialog.confirmed:
+            self.update_login_status("Contrato de uso nao aceito. Login cancelado.")
+            return
+        contract_text = contract_dialog.current_text.strip()
+        valid, error = self.validate_contract_text_allowed(contract_text, ["accept_usage"])
+        if not valid:
+            messagebox.showerror("Erro", error)
+            return
+
+        def do_accept(pow_nonce, hashrate_observed):
+            asyncio.run_coroutine_threadsafe(
+                self.sio.emit('accept_usage_contract', {
+                    'contract_content': base64.b64encode(contract_text.encode('utf-8')).decode('utf-8'),
+                    'public_key': base64.b64encode(self.public_key_pem).decode('utf-8'),
+                    'client_identifier': self.client_identifier,
+                    'pow_nonce': pow_nonce,
+                    'hashrate_observed': hashrate_observed
+                }),
+                self.loop
+            )
+        self.usage_contract_callback = do_accept
+        asyncio.run_coroutine_threadsafe(self.request_pow_challenge("usage_contract"), self.loop)
+
+    def build_certify_contract_template(self, target_type, target_id, reason=None,
+                                        contract_id=None, original_owner=None, original_action=None):
+        details = [
+            ("TARGET_TYPE", target_type),
+            ("TARGET_ID", target_id)
+        ]
+        if reason:
+            details.append(("REASON", reason))
+        if contract_id:
+            details.append(("SOURCE_CONTRACT", contract_id))
+        if original_owner:
+            details.append(("ORIGINAL_OWNER", original_owner))
+        if original_action:
+            details.append(("ORIGINAL_ACTION", original_action))
+        return self.build_contract_template("certify_contract", details)
+
+    def open_contract_certification_dialog(self, target_type, target_id, reason=None,
+                                           title_suffix="", contract_id=None,
+                                           original_owner=None, original_action=None):
+        contract_template = self.build_certify_contract_template(
+            target_type=target_type,
+            target_id=target_id,
+            reason=reason,
+            contract_id=contract_id,
+            original_owner=original_owner,
+            original_action=original_action
+        )
+        contract_dialog = ContractDialog(
+            self.root,
+            contract_template,
+            title_suffix=title_suffix,
+            signer=lambda text: self.apply_contract_signature(text)[0]
+        )
+        self.root.wait_window(contract_dialog.window)
+        if not contract_dialog.confirmed:
+            return
+        contract_text = contract_dialog.current_text.strip()
+        valid, error = self.validate_contract_text_allowed(contract_text, ["certify_contract"])
+        if not valid:
+            messagebox.showerror("Erro", error)
+            return
+
+        def do_certify(pow_nonce, hashrate_observed):
+            payload = {
+                'contract_content': base64.b64encode(contract_text.encode('utf-8')).decode('utf-8'),
+                'pow_nonce': pow_nonce,
+                'hashrate_observed': hashrate_observed
+            }
+            if contract_id:
+                payload['contract_id'] = contract_id
+                event = 'certify_contract'
+            else:
+                payload['target_type'] = target_type
+                payload['target_id'] = target_id
+                event = 'certify_missing_contract'
+            asyncio.run_coroutine_threadsafe(self.sio.emit(event, payload), self.loop)
+
+        if contract_id:
+            self.contract_certify_callback = do_certify
+        else:
+            self.missing_contract_certify_callback = do_certify
+        asyncio.run_coroutine_threadsafe(self.request_pow_challenge("contract_certify"), self.loop)
+
+    def parse_contract_info(self, contract_text):
+        info = {'action': None, 'user': None, 'signature': None}
+        current_section = None
+        for line in contract_text.splitlines():
+            line = line.strip()
+            if line.startswith("### "):
+                if line.endswith(":"):
+                    current_section = line[4:-1].lower()
+            elif line.startswith("### :END "):
+                current_section = None
+            elif line.startswith("# "):
+                if current_section == "details" and line.startswith("# ACTION:"):
+                    info['action'] = line.split(":", 1)[1].strip()
+                elif current_section == "start" and line.startswith("# USER:"):
+                    info['user'] = line.split(":", 1)[1].strip()
+                elif current_section == "start" and line.startswith("# SIGNATURE:"):
+                    info['signature'] = line.split(":", 1)[1].strip()
+        return info
+
+    def validate_contract_text(self, contract_text, expected_action):
+        if not contract_text.startswith("# HSYST P2P SERVICE"):
+            return False, "Cabeçalho HSYST não encontrado"
+        if "## :END CONTRACT" not in contract_text:
+            return False, "Final do contrato não encontrado"
+        info = self.parse_contract_info(contract_text)
+        if not info['action']:
+            return False, "Ação não informada no contrato"
+        if info['action'] != expected_action:
+            return False, f"Ação inválida no contrato (esperado {expected_action})"
+        if not info['user']:
+            return False, "Usuário não informado no contrato"
+        expected_user = self.current_user or self.username_var.get().strip()
+        if info['user'] != expected_user:
+            return False, "Usuário do contrato não corresponde ao usuário logado"
+        return True, ""
+
+    def validate_contract_text_allowed(self, contract_text, allowed_actions):
+        if not contract_text.startswith("# HSYST P2P SERVICE"):
+            return False, "Cabeçalho HSYST não encontrado"
+        if "## :END CONTRACT" not in contract_text:
+            return False, "Final do contrato não encontrado"
+        info = self.parse_contract_info(contract_text)
+        if not info['action']:
+            return False, "Ação não informada no contrato"
+        if info['action'] not in allowed_actions:
+            return False, f"Ação inválida no contrato (permitido: {', '.join(allowed_actions)})"
+        if not info['user']:
+            return False, "Usuário não informado no contrato"
+        expected_user = self.current_user or self.username_var.get().strip()
+        if info['user'] != expected_user:
+            return False, "Usuário do contrato não corresponde ao usuário logado"
+        return True, ""
+
+    def apply_contract_signature(self, contract_text):
+        lines = contract_text.splitlines()
+        signature_index = None
+        signed_lines = []
+        for idx, line in enumerate(lines):
+            if line.strip().startswith("# SIGNATURE:"):
+                signature_index = idx
+                continue
+            signed_lines.append(line)
+        if signature_index is None:
+            raise ValueError("Linha de assinatura não encontrada no contrato")
+        signed_text = "\n".join(signed_lines)
+        signature = self.private_key.sign(
+            signed_text.encode('utf-8'),
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256()
+        )
+        signature_b64 = base64.b64encode(signature).decode('utf-8')
+        lines[signature_index] = f"# SIGNATURE: {signature_b64}"
+        return "\n".join(lines).strip() + "\n", signature_b64
+
+    def extract_app_name(self, title):
+        match = re.search(r'\(HPS!api\)\{app\}:\{"([^"]+)"\}', title)
+        if match:
+            return match.group(1).strip()
+        return None
+
+    def parse_transfer_title(self, title):
+        if not title:
+            return None, None, None
+        match = re.search(r'\(HPS!transfer\)\{type=([^,}]+),\s*to=([^,}]+)(?:,\s*app=([^}]+))?\}', title)
+        if match:
+            transfer_type = match.group(1).strip().lower()
+            target_user = match.group(2).strip()
+            app_name = match.group(3).strip() if match.group(3) else None
+            return transfer_type, target_user, app_name
+        return None, None, None
+
+    def parse_domain_transfer_target(self, content):
+        try:
+            content_str = content.decode('utf-8')
+        except Exception:
+            return None, None
+        domain = None
+        new_owner = None
+        in_dns_section = False
+        for line in content_str.splitlines():
+            line = line.strip()
+            if line == '### DNS:':
+                in_dns_section = True
+                continue
+            if line == '### :END DNS':
+                in_dns_section = False
+                continue
+            if in_dns_section and line.startswith('# NEW_DNAME:'):
+                tail = line.split(':', 1)[1].strip()
+                if '=' in tail:
+                    domain = tail.split('=', 1)[1].strip()
+                else:
+                    domain = tail.strip()
+            if line.startswith('# NEW_DOWNER:'):
+                tail = line.split(':', 1)[1].strip()
+                if '=' in tail:
+                    new_owner = tail.split('=', 1)[1].strip()
+                else:
+                    new_owner = tail.strip()
+        return domain, new_owner
 
     def extract_content_hash_from_ddns(self, ddns_content):
         try:
@@ -2417,7 +5017,8 @@ class HPSBrowser:
         if file_path:
             self.upload_file_var.set(file_path)
             file_name = os.path.basename(file_path)
-            self.upload_title_var.set(file_name)
+            if not self.upload_title_var.get().strip():
+                self.upload_title_var.set(file_name)
             
             mime_type, _ = mimetypes.guess_type(file_name)
             if not mime_type:
@@ -2449,51 +5050,95 @@ class HPSBrowser:
         if not title:
             messagebox.showwarning("Aviso", "Por favor, insira um título.")
             return
-            
+        
+        try:
+            file_size = os.path.getsize(file_path)
+            if file_size > self.max_upload_size:
+                messagebox.showwarning("Aviso", f"Arquivo muito grande. Tamanho máximo: {self.max_upload_size // (1024*1024)}MB")
+                return
+            with open(file_path, 'rb') as f:
+                content = f.read()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao ler arquivo: {e}")
+            return
+        
+        file_hash = hashlib.sha256(content).hexdigest()
+        details = [
+            ("FILE_NAME", os.path.basename(file_path)),
+            ("FILE_SIZE", str(len(content))),
+            ("FILE_HASH", file_hash),
+            ("TITLE", title),
+            ("MIME", self.upload_mime_var.get()),
+            ("DESCRIPTION", self.upload_description_var.get()),
+            ("PUBLIC_KEY", base64.b64encode(self.public_key_pem).decode('utf-8'))
+        ]
+        app_name = self.extract_app_name(title)
+        if app_name:
+            details.append(("APP", app_name))
+        transfer_type, transfer_to, transfer_app = self.parse_transfer_title(title)
+        if transfer_type in ("file", "api_app") and not transfer_to:
+            messagebox.showwarning("Aviso", "Informe o usuario destino para a transferencia.")
+            return
+        if title == '(HPS!dns_change){change_dns_owner=true, proceed=true}':
+            domain, new_owner = self.parse_domain_transfer_target(content)
+            if new_owner:
+                transfer_type = "domain"
+                transfer_to = new_owner
+            if domain:
+                details.append(("DOMAIN", domain))
+        if transfer_to:
+            details.append(("TRANSFER_TO", transfer_to))
+        if transfer_type:
+            details.append(("TRANSFER_TYPE", transfer_type))
+        if transfer_app:
+            details.append(("APP", transfer_app))
+        
+        allowed_actions = ["upload_file"]
+        if title == '(HPS!dns_change){change_dns_owner=true, proceed=true}':
+            allowed_actions = ["transfer_domain"]
+        elif transfer_type == "file":
+            allowed_actions = ["transfer_content"]
+        elif transfer_type == "api_app":
+            allowed_actions = ["transfer_api_app"]
+        elif title.startswith('(HPS!api)'):
+            allowed_actions = ["upload_file", "change_api_app"]
+        
+        contract_template = self.build_contract_template(allowed_actions[0], details)
+        contract_dialog = ContractDialog(
+            self.root,
+            contract_template,
+            title_suffix="(Upload)",
+            signer=lambda text: self.apply_contract_signature(text)[0]
+        )
+        self.root.wait_window(contract_dialog.window)
+        if not contract_dialog.confirmed:
+            return
+        
+        contract_text = contract_dialog.current_text
+        valid, error = self.validate_contract_text_allowed(contract_text, allowed_actions)
+        if not valid:
+            messagebox.showerror("Erro", error)
+            return
+        
+        full_content = content + contract_text.encode('utf-8')
+        content_hash = hashlib.sha256(content).hexdigest()
+        signature = self.private_key.sign(
+            content,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256()
+        )
+        
         self.upload_window = UploadProgressWindow(self.root)
         
         def upload_thread():
             try:
                 if self.upload_window and self.upload_window.window.winfo_exists():
-                    self.upload_window.update_progress(10, "Lendo arquivo...")
-                    
-                with open(file_path, 'rb') as f:
-                    content = f.read()
-                    
-                if len(content) > self.max_upload_size:
-                    self.root.after(0, lambda: messagebox.showwarning("Aviso", f"Arquivo muito grande. Tamanho máximo: {self.max_upload_size // (1024*1024)}MB"))
-                    if self.upload_window and self.upload_window.window.winfo_exists():
-                        self.upload_window.destroy()
-                        self.upload_window = None
-                    return
-                    
-                if self.upload_window and self.upload_window.window.winfo_exists():
-                    self.upload_window.update_progress(30, "Calculando hash...")
-                    
-                header = b"# HSYST P2P SERVICE"
-                header += b"### START:"
-                header += b"# USER: " + self.current_user.encode('utf-8') + b""
-                header += b"# KEY: " + base64.b64encode(self.public_key_pem) + b""
-                header += b"### :END START"
+                    self.upload_window.update_progress(30, "Hash calculado", content_hash, len(content))
+                    self.upload_window.log_message(f"Hash do conteúdo: {content_hash}")
+                    self.upload_window.update_progress(70, "Contrato anexado")
+                    self.upload_window.log_message("Contrato confirmado e anexado ao arquivo")
                 
-                full_content_with_header = header + content
-                content_hash = hashlib.sha256(full_content_with_header).hexdigest()
-                
-                if self.upload_window and self.upload_window.window.winfo_exists():
-                    self.upload_window.update_progress(50, "Preparando cabeçalho...", content_hash, len(full_content_with_header))
-                    self.upload_window.log_message(f"Hash calculado: {content_hash}")
-                    
-                if self.upload_window and self.upload_window.window.winfo_exists():
-                    self.upload_window.update_progress(70, "Assinando conteúdo...")
-                    self.upload_window.log_message("Assinando conteúdo com chave privada...")
-                    
-                signature = self.private_key.sign(
-                    content,
-                    padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-                    hashes.SHA256()
-                )
-                
-                self.save_content_to_storage(content_hash, full_content_with_header, {
+                self.save_content_to_storage(content_hash, content, {
                     'title': title,
                     'description': self.upload_description_var.get(),
                     'mime_type': self.upload_mime_var.get(),
@@ -2514,18 +5159,18 @@ class HPSBrowser:
                 if self.upload_window and self.upload_window.window.winfo_exists():
                     self.upload_window.update_progress(90, "Solicitando PoW...")
                     self.upload_window.log_message("Solicitando prova de trabalho para upload...")
-                    
+                
                 self.root.after(0, lambda: self.update_upload_status("Solicitando PoW para upload..."))
                 
                 def do_upload(pow_nonce, hashrate_observed):
                     asyncio.run_coroutine_threadsafe(
                         self._upload_file(
                             content_hash, title, self.upload_description_var.get(),
-                            self.upload_mime_var.get(), len(full_content_with_header),
-                            signature, full_content_with_header, pow_nonce, hashrate_observed
+                            self.upload_mime_var.get(), len(content),
+                            signature, full_content, pow_nonce, hashrate_observed
                         ), self.loop
                     )
-                    
+                
                 self.upload_callback = do_upload
                 asyncio.run_coroutine_threadsafe(self.request_pow_challenge("upload"), self.loop)
                 
@@ -2535,15 +5180,116 @@ class HPSBrowser:
                 if self.upload_window and self.upload_window.window.winfo_exists():
                     self.upload_window.destroy()
                     self.upload_window = None
-                    
+        
         threading.Thread(target=upload_thread, daemon=True).start()
 
-    async def _upload_file(self, content_hash, title, description, mime_type, size, signature, full_content_with_header, pow_nonce, hashrate_observed):
+    def upload_content_bytes(self, title, description, mime_type, content):
+        if not self.connected:
+            messagebox.showwarning("Aviso", "Por favor, conecte-se à rede primeiro.")
+            return
+        if not title:
+            messagebox.showwarning("Aviso", "Titulo nao informado.")
+            return
+        file_hash = hashlib.sha256(content).hexdigest()
+        details = [
+            ("FILE_NAME", title),
+            ("FILE_SIZE", str(len(content))),
+            ("FILE_HASH", file_hash),
+            ("TITLE", title),
+            ("MIME", mime_type),
+            ("DESCRIPTION", description),
+            ("PUBLIC_KEY", base64.b64encode(self.public_key_pem).decode('utf-8'))
+        ]
+        app_name = self.extract_app_name(title)
+        if app_name:
+            details.append(("APP", app_name))
+        transfer_type, transfer_to, transfer_app = self.parse_transfer_title(title)
+        if transfer_type in ("file", "api_app") and not transfer_to:
+            messagebox.showwarning("Aviso", "Informe o usuario destino para a transferencia.")
+            return
+        if title == '(HPS!dns_change){change_dns_owner=true, proceed=true}':
+            domain, new_owner = self.parse_domain_transfer_target(content)
+            if new_owner:
+                transfer_type = "domain"
+                transfer_to = new_owner
+            if domain:
+                details.append(("DOMAIN", domain))
+        if transfer_to:
+            details.append(("TRANSFER_TO", transfer_to))
+        if transfer_type:
+            details.append(("TRANSFER_TYPE", transfer_type))
+        if transfer_app:
+            details.append(("APP", transfer_app))
+        allowed_actions = ["upload_file"]
+        if title == '(HPS!dns_change){change_dns_owner=true, proceed=true}':
+            allowed_actions = ["transfer_domain"]
+        elif transfer_type == "file":
+            allowed_actions = ["transfer_content"]
+        elif transfer_type == "api_app":
+            allowed_actions = ["transfer_api_app"]
+        elif title.startswith('(HPS!api)'):
+            allowed_actions = ["upload_file", "change_api_app"]
+        contract_template = self.build_contract_template(allowed_actions[0], details)
+        signed_text, _ = self.apply_contract_signature(contract_template)
+        contract_text = signed_text
+        valid, error = self.validate_contract_text_allowed(contract_text, allowed_actions)
+        if not valid:
+            messagebox.showerror("Erro", error)
+            return
+        full_content = content + contract_text.encode('utf-8')
+        content_hash = hashlib.sha256(content).hexdigest()
+        signature = self.private_key.sign(
+            content,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256()
+        )
+        self.upload_window = UploadProgressWindow(self.root)
+
+        def upload_thread():
+            try:
+                if self.upload_window and self.upload_window.window.winfo_exists():
+                    self.upload_window.update_progress(30, "Hash calculado", content_hash, len(content))
+                    self.upload_window.log_message(f"Hash do conteúdo: {content_hash}")
+                    self.upload_window.update_progress(70, "Contrato anexado")
+                    self.upload_window.log_message("Contrato confirmado e anexado ao arquivo")
+                self.save_content_to_storage(content_hash, content, {
+                    'title': title,
+                    'description': description,
+                    'mime_type': mime_type,
+                    'username': self.current_user,
+                    'signature': base64.b64encode(signature).decode('utf-8'),
+                    'public_key': base64.b64encode(self.public_key_pem).decode('utf-8'),
+                    'verified': True
+                })
+                if self.upload_window and self.upload_window.window.winfo_exists():
+                    self.upload_window.update_progress(90, "Solicitando PoW...")
+                    self.upload_window.log_message("Solicitando prova de trabalho para upload...")
+                self.root.after(0, lambda: self.update_upload_status("Solicitando PoW para upload..."))
+                def do_upload(pow_nonce, hashrate_observed):
+                    asyncio.run_coroutine_threadsafe(
+                        self._upload_file(
+                            content_hash, title, description,
+                            mime_type, len(content),
+                            signature, full_content, pow_nonce, hashrate_observed
+                        ), self.loop
+                    )
+                self.upload_callback = do_upload
+                asyncio.run_coroutine_threadsafe(self.request_pow_challenge("upload"), self.loop)
+            except Exception as e:
+                logger.error(f"Erro no upload: {e}")
+                self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha no upload: {e}"))
+                if self.upload_window and self.upload_window.window.winfo_exists():
+                    self.upload_window.destroy()
+                    self.upload_window = None
+
+        threading.Thread(target=upload_thread, daemon=True).start()
+
+    async def _upload_file(self, content_hash, title, description, mime_type, size, signature, full_content, pow_nonce, hashrate_observed):
         if not self.connected:
             return
             
         try:
-            content_b64 = base64.b64encode(full_content_with_header).decode('utf-8')
+            content_b64 = base64.b64encode(full_content).decode('utf-8')
             data = {
                 'content_hash': content_hash,
                 'title': title,
@@ -2582,7 +5328,29 @@ class HPSBrowser:
         if not self.is_valid_domain(domain):
             messagebox.showwarning("Aviso", "Domínio inválido. Use apenas letras, números e hífens.")
             return
-            
+        
+        details = [
+            ("DOMAIN", domain),
+            ("CONTENT_HASH", content_hash),
+            ("PUBLIC_KEY", base64.b64encode(self.public_key_pem).decode('utf-8'))
+        ]
+        contract_template = self.build_contract_template("register_dns", details)
+        contract_dialog = ContractDialog(
+            self.root,
+            contract_template,
+            title_suffix="(DNS)",
+            signer=lambda text: self.apply_contract_signature(text)[0]
+        )
+        self.root.wait_window(contract_dialog.window)
+        if not contract_dialog.confirmed:
+            return
+        
+        contract_text = contract_dialog.current_text
+        valid, error = self.validate_contract_text(contract_text, "register_dns")
+        if not valid:
+            messagebox.showerror("Erro", error)
+            return
+        
         self.ddns_window = DDNSProgressWindow(self.root)
         self.ddns_window.update_progress(10, "Criando arquivo DDNS...", domain, content_hash)
         
@@ -2590,16 +5358,31 @@ class HPSBrowser:
             try:
                 self.ddns_window.log_message(f"Criando arquivo DDNS para domínio: {domain}")
                 ddns_content = self.create_ddns_file(domain, content_hash)
+                ddns_content_full = ddns_content + contract_text.encode('utf-8')
                 ddns_hash = hashlib.sha256(ddns_content).hexdigest()
                 
                 self.ddns_window.update_progress(30, "Assinando arquivo DDNS...", domain, ddns_hash)
                 self.ddns_window.log_message(f"Hash do arquivo DDNS: {ddns_hash}")
                 
+                header_end = b'### :END START'
+                if header_end in ddns_content:
+                    _, ddns_data_signed = ddns_content.split(header_end, 1)
+                else:
+                    ddns_data_signed = ddns_content
+                
                 signature = self.private_key.sign(
-                    ddns_content,
+                    ddns_data_signed,
                     padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
                     hashes.SHA256()
                 )
+                
+                self.save_ddns_to_storage(domain, ddns_content, {
+                    'content_hash': content_hash,
+                    'username': self.current_user,
+                    'verified': True,
+                    'signature': base64.b64encode(signature).decode('utf-8'),
+                    'public_key': base64.b64encode(self.public_key_pem).decode('utf-8')
+                })
                 
                 self.ddns_window.update_progress(50, "Preparando envio...", domain, content_hash)
                 self.ddns_window.log_message("Arquivo DDNS assinado com sucesso")
@@ -2608,10 +5391,10 @@ class HPSBrowser:
                 
                 def do_register(pow_nonce, hashrate_observed):
                     asyncio.run_coroutine_threadsafe(
-                        self._register_dns(domain, ddns_content, signature, pow_nonce, hashrate_observed),
+                        self._register_dns(domain, ddns_content_full, signature, pow_nonce, hashrate_observed),
                         self.loop
                     )
-                    
+                
                 self.dns_callback = do_register
                 asyncio.run_coroutine_threadsafe(self.request_pow_challenge("dns"), self.loop)
                 
@@ -2621,7 +5404,7 @@ class HPSBrowser:
                 if self.ddns_window and self.ddns_window.winfo_exists():
                     self.ddns_window.destroy()
                     self.ddns_window = None
-                    
+        
         threading.Thread(target=register_thread, daemon=True).start()
 
     async def _register_dns(self, domain, ddns_content, signature, pow_nonce, hashrate_observed):
@@ -2735,7 +5518,18 @@ class HPSBrowser:
                         
                         if self.sync_dialog and self.sync_dialog.cancelled:
                             return
-                            
+                        
+                        self.sync_dialog.log_message("Sincronizando DNS locais com a rede...")
+                        await self.sync_client_dns_files()
+                        await asyncio.sleep(1)
+                        
+                        if self.sync_dialog and self.sync_dialog.cancelled:
+                            return
+                        
+                        self.sync_dialog.log_message("Sincronizando contratos locais com a rede...")
+                        await self.sync_client_contracts()
+                        await asyncio.sleep(1)
+                        
                         self.sync_dialog.log_message("Sincronização concluída!")
                         
                     except Exception as e:
@@ -2774,7 +5568,18 @@ class HPSBrowser:
         
         if self.sync_dialog and self.sync_dialog.cancelled:
             return
-            
+        
+        self.sync_dialog.log_message("Sincronizando DNS locais com a rede...")
+        await self.sync_client_dns_files()
+        await asyncio.sleep(1)
+        
+        if self.sync_dialog and self.sync_dialog.cancelled:
+            return
+        
+        self.sync_dialog.log_message("Sincronizando contratos locais com a rede...")
+        await self.sync_client_contracts()
+        await asyncio.sleep(1)
+        
         self.sync_dialog.log_message("Sincronização concluída!")
 
     def update_network_stats(self, online_nodes, total_content, total_dns, node_types):
@@ -2911,6 +5716,21 @@ Servidor: {self.current_server or 'Nenhum'}
         elif self.report_callback:
             self.report_callback(nonce, hashrate)
             self.report_callback = None
+        elif self.contract_reset_callback:
+            self.contract_reset_callback(nonce, hashrate)
+            self.contract_reset_callback = None
+        elif self.contract_certify_callback:
+            self.contract_certify_callback(nonce, hashrate)
+            self.contract_certify_callback = None
+        elif self.contract_transfer_callback:
+            self.contract_transfer_callback(nonce, hashrate)
+            self.contract_transfer_callback = None
+        elif self.missing_contract_certify_callback:
+            self.missing_contract_certify_callback(nonce, hashrate)
+            self.missing_contract_certify_callback = None
+        elif self.usage_contract_callback:
+            self.usage_contract_callback(nonce, hashrate)
+            self.usage_contract_callback = None
         else:
             asyncio.run_coroutine_threadsafe(self.send_authentication(nonce, hashrate), self.loop)
 
@@ -2921,6 +5741,16 @@ Servidor: {self.current_server or 'Nenhum'}
             self.dns_callback = None
         elif self.report_callback:
             self.report_callback = None
+        elif self.contract_reset_callback:
+            self.contract_reset_callback = None
+        elif self.contract_certify_callback:
+            self.contract_certify_callback = None
+        elif self.contract_transfer_callback:
+            self.contract_transfer_callback = None
+        elif self.missing_contract_certify_callback:
+            self.missing_contract_certify_callback = None
+        elif self.usage_contract_callback:
+            self.usage_contract_callback = None
         self.root.after(0, lambda: self.update_login_status("Falha na solução do PoW"))
 
     def report_content_action(self, content_hash, reported_user):
@@ -2934,6 +5764,27 @@ Servidor: {self.current_server or 'Nenhum'}
             
         if reported_user == self.current_user:
             messagebox.showwarning("Aviso", "Você não pode reportar seu próprio conteúdo.")
+            return
+        
+        details = [
+            ("CONTENT_HASH", content_hash),
+            ("REPORTED_USER", reported_user)
+        ]
+        contract_template = self.build_contract_template("report_content", details)
+        contract_dialog = ContractDialog(
+            self.root,
+            contract_template,
+            title_suffix="(Reporte)",
+            signer=lambda text: self.apply_contract_signature(text)[0]
+        )
+        self.root.wait_window(contract_dialog.window)
+        if not contract_dialog.confirmed:
+            return
+        
+        contract_text = contract_dialog.current_text
+        valid, error = self.validate_contract_text(contract_text, "report_content")
+        if not valid:
+            messagebox.showerror("Erro", error)
             return
             
         self.report_window = ReportProgressWindow(self.root)
@@ -2976,7 +5827,7 @@ Servidor: {self.current_server or 'Nenhum'}
                 
                 def do_report(pow_nonce, hashrate_observed):
                     asyncio.run_coroutine_threadsafe(
-                        self._report_content(content_hash, reported_user, pow_nonce, hashrate_observed),
+                        self._report_content(content_hash, reported_user, contract_text, pow_nonce, hashrate_observed),
                         self.loop
                     )
                     
@@ -2992,7 +5843,7 @@ Servidor: {self.current_server or 'Nenhum'}
                     
         threading.Thread(target=report_thread, daemon=True).start()
 
-    async def _report_content(self, content_hash, reported_user, pow_nonce, hashrate_observed):
+    async def _report_content(self, content_hash, reported_user, contract_text, pow_nonce, hashrate_observed):
         if not self.connected:
             return
             
@@ -3012,6 +5863,7 @@ Servidor: {self.current_server or 'Nenhum'}
                 'content_hash': content_hash,
                 'reported_user': reported_user,
                 'reporter': self.current_user,
+                'contract_content': base64.b64encode(contract_text.encode('utf-8')).decode('utf-8'),
                 'pow_nonce': pow_nonce,
                 'hashrate_observed': hashrate_observed
             })
