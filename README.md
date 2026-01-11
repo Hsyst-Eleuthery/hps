@@ -9,7 +9,7 @@
 
 * Este projeto **não é open-source**, verifique a [licença](https://github.com/Hsyst-Eleuthery/hps/blob/main/LICENSE.md) antes de executar ou replicar.
 - Utilizando pela primeira vez? Nosso servidor oficial é:
-- - Conecte-se primeiro no: `server2.hps.hsyst.org` (HTTPS/TLS), acesse thais.hps (hps://5b99043ed307e902efee003ae6f38e9541985fb06907b7bf03fef18b477e4a78)
+- - Conecte-se primeiro no: `server2.hps.hsyst.org` (HTTPS/TLS)
   - Caso não encontre o arquivo que procura, além do de testes, tente acessar em `server1.hps.hsyst.org` (HTTP/Backup do HTTPS/TLS)
   - Ou, caso não encontre em nenhum deles, tente acessar `server3.hps.hsyst.org` (*HTTP/Backup* do `HTTP/Backup do HTTPS/TLS`)
 
