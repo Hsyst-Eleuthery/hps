@@ -2135,9 +2135,9 @@ username TEXT NOT NULL, contract_hash TEXT NOT NULL, accepted_at REAL NOT NULL,
                 contract_text = base64.b64decode(contract_b64).decode('utf-8', errors='replace')
             except Exception:
                 continue
-            if title_match and f"# TITLE: {title_match}" in contract_text.lower():
+            if title_match and f"# title: {title_match}" in contract_text.lower():
                 matched = True
-            elif app_match and f"# APP: {app_match}" in contract_text.lower():
+            elif app_match and f"# app: {app_match}" in contract_text.lower():
                 matched = True
             else:
                 matched = False
