@@ -1,4 +1,3 @@
-# hps_server.py (versão completa com sistema de contratos e correções)
 import asyncio
 import aiohttp
 from aiohttp import web
@@ -620,6 +619,52 @@ username TEXT NOT NULL, contract_hash TEXT NOT NULL, accepted_at REAL NOT NULL,
                               VALUES (?, ?, ?)''',
                            (username, self.usage_contract_hash, time.time()))
             conn.commit()
+
+    def remove_usage_contract_for_user(self, username: str) -> None:
+        if not username:
+            return
+        contract_ids = []
+        with get_db_conn(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT contract_id FROM contracts WHERE username = ? AND action_type = ?',
+                           (username, "accept_usage"))
+            contract_ids = [row[0] for row in cursor.fetchall()]
+            cursor.execute('DELETE FROM contracts WHERE username = ? AND action_type = ?',
+                           (username, "accept_usage"))
+            cursor.execute('DELETE FROM usage_contract_acceptance WHERE username = ?', (username,))
+            conn.commit()
+        if contract_ids:
+            contract_dir = os.path.join(self.files_dir, "contracts")
+            for contract_id in contract_ids:
+                contract_path = os.path.join(contract_dir, f"{contract_id}.contract")
+                if os.path.exists(contract_path):
+                    try:
+                        os.remove(contract_path)
+                    except OSError as exc:
+                        logger.warning(f"Failed to remove contract file {contract_path}: {exc}")
+
+    def verify_usage_contract_integrity(self, username: str) -> bool:
+        if not username:
+            return False
+        with get_db_conn(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''SELECT contract_content, signature FROM contracts
+                              WHERE username = ? AND action_type = ?
+                              ORDER BY timestamp DESC LIMIT 1''',
+                           (username, "accept_usage"))
+            row = cursor.fetchone()
+        if not row:
+            return True
+        contract_content_b64, signature = row
+        try:
+            contract_bytes = base64.b64decode(contract_content_b64)
+        except Exception:
+            return False
+        return self.verify_contract_signature(
+            contract_content=contract_bytes,
+            username=username,
+            signature=signature
+        )
 
     def extract_terms_from_usage_contract(self, contract_text: str) -> str:
         in_terms = False
@@ -1395,15 +1440,20 @@ username TEXT NOT NULL, contract_hash TEXT NOT NULL, accepted_at REAL NOT NULL,
             
             signed_text = '\n'.join(signed_content)
             
-            # Obtém chave pública do usuário
+            # Usa sempre a chave pública inicial armazenada no cadastro
+            stored_key = None
+            with get_db_conn(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT public_key FROM users WHERE username = ?', (username,))
+                row = cursor.fetchone()
+                if row:
+                    stored_key = row[0]
+            if stored_key:
+                if public_key_pem and public_key_pem != stored_key:
+                    return False
+                public_key_pem = stored_key
             if not public_key_pem:
-                with get_db_conn(self.db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT public_key FROM users WHERE username = ?', (username,))
-                    row = cursor.fetchone()
-                    if not row:
-                        return False
-                    public_key_pem = row[0]
+                return False
             
             # Verifica assinatura
             public_key = serialization.load_pem_public_key(
@@ -2135,9 +2185,9 @@ username TEXT NOT NULL, contract_hash TEXT NOT NULL, accepted_at REAL NOT NULL,
                 contract_text = base64.b64decode(contract_b64).decode('utf-8', errors='replace')
             except Exception:
                 continue
-            if title_match and f"# title: {title_match}" in contract_text.lower():
+            if title_match and f"# TITLE: {title_match}" in contract_text.lower():
                 matched = True
-            elif app_match and f"# app: {app_match}" in contract_text.lower():
+            elif app_match and f"# APP: {app_match}" in contract_text.lower():
                 matched = True
             else:
                 matched = False
@@ -2395,8 +2445,22 @@ username TEXT NOT NULL, contract_hash TEXT NOT NULL, accepted_at REAL NOT NULL,
                         stored_hash, stored_key, rep = row
                         reputation = rep
                         if stored_hash == password_hash:
-                            cursor.execute('UPDATE users SET last_login = ?, public_key = ?, client_identifier = ?, last_activity = ? WHERE username = ?',
-                                           (time.time(), public_key_b64, client_identifier, time.time(), username))
+                            if stored_key != public_key_b64:
+                                self.remove_usage_contract_for_user(username)
+                                await self.sio.emit('authentication_result', {
+                                    'success': False,
+                                    'error': 'Chave Pública inválida, utilize sua chave pública inicial na aba de configurações'
+                                }, room=sid)
+                                return
+                            if not self.verify_usage_contract_integrity(username):
+                                self.remove_usage_contract_for_user(username)
+                                await self.sio.emit('authentication_result', {
+                                    'success': False,
+                                    'error': 'Chave Pública inválida, utilize sua chave pública inicial na aba de configurações'
+                                }, room=sid)
+                                return
+                            cursor.execute('UPDATE users SET last_login = ?, client_identifier = ?, last_activity = ? WHERE username = ?',
+                                           (time.time(), client_identifier, time.time(), username))
                             conn.commit()
                             await self.finalize_authentication(sid, username, public_key_b64, node_type, client_identifier, reputation)
                         else:
