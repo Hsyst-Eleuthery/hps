@@ -301,6 +301,7 @@ pip install aiohttp python-socketio cryptography pillow qrcode
 ```bash
 python hps_server.py
 ```
+Obs:. Antes de executar seu servidor HPS, altere a linha `926` deste mesmo arquivo, trocando `127.0.0.1` pelo acesso público do seu servidor, seja domínio, ip público, etc...
 
 ### Iniciar navegador
 
