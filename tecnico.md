@@ -2,7 +2,7 @@
 - Este projeto não é open-source, verifique a [licença](https://github.com/Hsyst-Eleuthery/hps/blob/main/LICENSE.md) antes de executar ou replicar
 
 
-# 0. Introdução
+## 0. Introdução
 O HPS, como está escrito hoje no código, é mais do que “um programa que roda em Python”: ele é um esqueleto completo de infraestrutura, com regras próprias de identidade, contratos, economia, DNS e validação distribuída. O manual abaixo tenta explicar isso de forma técnica, mas fluida, usando o próprio código como referência, e deixando clara a filosofia por trás das escolhas — inclusive a da licença.
 
 ---
