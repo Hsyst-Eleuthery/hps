@@ -30,11 +30,11 @@ Ao continuar usando o Software após esse prazo, o usuário **concorda expressam
 A autora original, **Thaís**, deve ser devidamente creditada em qualquer cópia, modificação ou fork deste Software.
 O crédito deve incluir, no mínimo:
 
-* O nome da autora e nickname, com links para o GitHub “Thaís (op3ny)” ([https://github.com/op3ny](https://github.com/op3ny)) e para o site oficial Hsyst ([https://hsyst.xyz](https://hsyst.xyz));
+* O nome da autora e nickname, com links para o GitHub “Thaís (op3ny)” ([https://github.com/op3ny](https://github.com/op3ny)) e para o site oficial Hsyst ([https://hsyst.org](https://hsyst.org));
 * Um link para o repositório original e/ou página oficial do projeto;
 * O seguinte texto, de forma visível e destacada, presente **tanto no início quanto no final** do material textual (README, documentação, site e(ou) equivalente), **no idioma principal do público-alvo e no mesmo idioma do restante do projeto**:
 
-> **"Este projeto é originalmente de Thaís ([[https://github.com/op3ny/hps](https://github.com/op3ny/hps)]), feito para a Hsyst ([[https://hsyst.xyz](https://hsyst.xyz)]), idealizado e programado diretamente por Thaís. Não detenho qualquer autoria sobre o código, independentemente de alterações realizadas."**
+> **"Este projeto é originalmente de Thaís ([[https://github.com/op3ny/hps](https://github.com/op3ny/hps)]), feito para a Hsyst ([[https://hsyst.xyz](https://hsyst.org)]), idealizado e programado diretamente por Thaís. Não detenho qualquer autoria sobre o código, independentemente de alterações realizadas."**
 
 ---
 
