@@ -293,7 +293,7 @@ A ideia é simples:
 ### Instalação de dependências
 
 ```bash
-pip install aiohttp python-socketio cryptography pillow qrcode
+pip install aiohttp python-socketio cryptography pillow qrcode aiofiles tkinter
 ```
 
 ### Iniciar servidor
