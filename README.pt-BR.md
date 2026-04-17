@@ -218,13 +218,6 @@ HPS/
 
 ---
 
-## Status
-
-- Funcional  
-- Experimental  
-
----
-
 ## Licença & Créditos
 
 Criado por [Thaís](https://github.com/op3ny).
