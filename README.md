@@ -14,6 +14,8 @@
   <tr>
     <td><img src="docs/images/images1.PNG" width="400"></td>
     <td><img src="docs/images/images2.png" width="400"></td>
+  </tr>
+  <tr>
     <td><img src="docs/images/images3.png" width="400"></td>
     <td><img src="docs/images/images4.png" width="400"></td>
   </tr>
