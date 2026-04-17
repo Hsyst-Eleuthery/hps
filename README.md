@@ -1,14 +1,13 @@
 # Hsyst Peer-to-Peer Service (HPS)
 
+> A federated P2P infrastructure for publishing, digital contracts, identity, decentralized DNS, and native economy — with no central authority.
+
+---
 > **[Leia em Português (Brasil)](README.pt-BR.md)**
 
 ---
 
 > **[Leia o Manual Técnico (Português do Brasil)](https://github.com/Hsyst-Eleuthery/hps/blob/main/docs/tecnico.md)**
-
----
-
-> A federated P2P infrastructure for publishing, digital contracts, identity, decentralized DNS, and native economy — with no central authority.
 
 ---
 
