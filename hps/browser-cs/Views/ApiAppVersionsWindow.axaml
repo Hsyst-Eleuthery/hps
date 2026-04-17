@@ -1,0 +1,38 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:HpsBrowser.Models"
+        xmlns:views="clr-namespace:HpsBrowser.Views"
+        x:Class="HpsBrowser.Views.ApiAppVersionsWindow"
+        x:DataType="views:ApiAppVersionsWindow"
+        Width="760" Height="520"
+        WindowStartupLocation="CenterOwner"
+        Title="Versoes do API App">
+  <StackPanel Spacing="10" Margin="16">
+    <TextBlock Text="Versoes do API App" FontSize="16" FontWeight="Bold" />
+    <TextBlock Text="Selecione uma versao para abrir ou prossiga com a atual." />
+    <DataGrid Height="340"
+              ItemsSource="{Binding Versions}"
+              SelectedItem="{Binding SelectedVersion}"
+              Background="#1A1A1A"
+              Foreground="#EAEAEA"
+              HeadersVisibility="Column"
+              GridLinesVisibility="All"
+              AutoGenerateColumns="False"
+              IsReadOnly="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="App" Binding="{Binding AppName}" Width="140" />
+        <DataGridTextColumn Header="Versao" Binding="{Binding VersionLabel}" Width="120" />
+        <DataGridTextColumn Header="Hash" Binding="{Binding ContentHash}" Width="240" />
+        <DataGridTextColumn Header="Autor" Binding="{Binding Username}" Width="120" />
+        <DataGridTextColumn Header="Data" Binding="{Binding TimestampText}" Width="120" />
+        <DataGridTextColumn Header="Atual" Binding="{Binding IsCurrent}" Width="70" />
+        <DataGridTextColumn Header="Latest" Binding="{Binding IsLatest}" Width="70" />
+      </DataGrid.Columns>
+    </DataGrid>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="Abrir selecionada" Name="OpenSelectedButton" />
+      <Button Content="Prosseguir com atual" Name="ProceedCurrentButton" />
+      <Button Content="Cancelar" Name="CancelButton" />
+    </StackPanel>
+  </StackPanel>
+</Window>
