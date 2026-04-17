@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HpsBrowser.Views.ContractAnalyzerWindow"
+        Width="900" Height="680"
+        WindowStartupLocation="CenterOwner"
+        Title="Analisador de Contratos">
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="10">
+      <TextBlock x:Name="TitleText" FontSize="16" FontWeight="Bold" />
+      <TextBlock x:Name="StatusText" FontSize="12" FontWeight="Bold" />
+      <TextBlock x:Name="ReasonText" Foreground="Red" />
+
+      <Border Background="#1E1E1E" Padding="8" CornerRadius="6">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Resumo" FontWeight="Bold" />
+          <TextBox x:Name="SummaryText" AcceptsReturn="True" Height="120" IsReadOnly="True" />
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E1E" Padding="8" CornerRadius="6">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Contrato completo" FontWeight="Bold" />
+          <TextBox x:Name="ContractText" AcceptsReturn="True" Height="260" IsReadOnly="True" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button x:Name="AcceptButton" Content="Aceitar" Width="120" />
+        <Button x:Name="RejectButton" Content="Rejeitar" Width="120" />
+        <Button x:Name="RenounceButton" Content="Renunciar" Width="120" />
+        <Button x:Name="CloseButton" Content="Fechar" Width="120" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.9" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.7" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.7" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.4" />
+    <PackageReference Include="SocketIOClient" Version="3.1.0" />
+    <PackageReference Update="SocketIo.Core" ExcludeAssets="all" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="SocketIo.Core/SocketIo.Core.csproj" />
+    <ProjectReference Include="HpsBrowser.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Commands/**" />
+    <Compile Remove="Converters/**" />
+    <Compile Remove="Models/**" />
+    <Compile Remove="Services/**" />
+    <Compile Remove="ViewModels/**" />
+    <Compile Remove="Views/**" />
+    <AvaloniaXaml Remove="Views/**/*.axaml" />
+    <Compile Remove="SocketIo.Core/**" />
+  </ItemGroup>
+</Project>
