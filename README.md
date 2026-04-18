@@ -42,7 +42,7 @@
 # Download
 If you'd like to download, we have a compiled version for Windows and Linux!
 
-- [Click here!](https://github.com/Hsyst-Eleuthery/releases)
+- [Click here!](https://github.com/Hsyst-Eleuthery/hps/releases)
 
 ---
 
