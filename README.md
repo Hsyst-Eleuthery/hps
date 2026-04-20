@@ -37,6 +37,8 @@
   | Backup 1 | `http://server1.hps.hsyst.org` | HTTP (Backup of HTTPS/TLS) |
   | Backup 2 | `http://server3.hps.hsyst.org` | HTTP (Backup of Backup) |
 
+- You can test the connection opening the URL "thais.hps" or "6a49d870ba347ac2d2e0a1453367ac74d345f6f906c4144423343e180aef66a0"
+
 ---
 
 # Download
