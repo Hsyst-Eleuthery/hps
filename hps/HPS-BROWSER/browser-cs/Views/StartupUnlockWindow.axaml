@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HpsBrowser.Views.StartupUnlockWindow"
+        Width="440" Height="230"
+        CanResize="False"
+        Title="Unlock de Chaves">
+  <StackPanel Margin="14" Spacing="10">
+    <TextBlock x:Name="IntroTextBlock" Text="Informe usuario e senha da chave para desbloquear o ambiente." TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+      <TextBlock Grid.Row="0" Grid.Column="0" Text="Usuario:" VerticalAlignment="Center" />
+      <TextBox x:Name="UsernameTextBox" Grid.Row="0" Grid.Column="1" />
+      <TextBlock Grid.Row="1" Grid.Column="0" Text="Senha:" VerticalAlignment="Center" />
+      <TextBox x:Name="PassphraseTextBox" Grid.Row="1" Grid.Column="1" PasswordChar="*" />
+    </Grid>
+    <TextBlock x:Name="ErrorTextBlock" Foreground="Red" IsVisible="False" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="CancelButton" Content="Cancelar" />
+      <Button x:Name="ConfirmButton" Content="Continuar" />
+    </StackPanel>
+  </StackPanel>
+</Window>
