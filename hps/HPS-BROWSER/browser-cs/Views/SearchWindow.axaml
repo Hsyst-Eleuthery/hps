@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:HpsBrowser.ViewModels"
+        x:Class="HpsBrowser.Views.SearchWindow"
+        x:DataType="vm:MainViewModel"
+        Width="720" Height="560"
+        WindowStartupLocation="CenterOwner"
+        Title="Busca Avançada">
+  <StackPanel Spacing="10" Margin="16">
+    <TextBlock Text="Busca Avançada" FontSize="16" FontWeight="Bold" />
+    <StackPanel Spacing="6">
+      <TextBlock Text="Termo de busca:" />
+      <TextBox Text="{Binding SearchQuery}" />
+    </StackPanel>
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+      <TextBlock Text="Tipo de conteúdo:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="0" Grid.Column="1"
+                ItemsSource="{Binding SearchContentTypes}"
+                SelectedItem="{Binding SearchContentType}" />
+      <TextBlock Text="Ordenar por:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="1" Grid.Column="1"
+                ItemsSource="{Binding SearchSortOptions}"
+                SelectedItem="{Binding SearchSortBy}" />
+    </Grid>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="Buscar" Command="{Binding SearchContentCommand}" />
+      <Button Content="Limpar" Command="{Binding ClearSearchCommand}" />
+      <Button Content="Copiar Hash" Command="{Binding CopySearchHashCommand}" />
+      <Button Content="Abrir" Command="{Binding OpenSearchResultCommand}" />
+    </StackPanel>
+    <TextBlock Text="{Binding SearchStatus}" Foreground="Red" />
+    <DataGrid Height="320"
+              ItemsSource="{Binding SearchResults}"
+              SelectedItem="{Binding SelectedSearchResult}"
+              Background="#1A1A1A"
+              Foreground="#EAEAEA"
+              HeadersVisibility="Column"
+              GridLinesVisibility="All"
+              AutoGenerateColumns="False"
+              IsReadOnly="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Título" Binding="{Binding Title}" Width="200" />
+        <DataGridTextColumn Header="Hash" Binding="{Binding ContentHash}" Width="220" />
+        <DataGridTextColumn Header="Usuário" Binding="{Binding Username}" Width="120" />
+        <DataGridTextColumn Header="Reputação" Binding="{Binding Reputation}" Width="90" />
+        <DataGridTextColumn Header="Tipo" Binding="{Binding MimeType}" Width="120" />
+        <DataGridTextColumn Header="Verificado" Binding="{Binding Verified}" Width="90" />
+      </DataGrid.Columns>
+    </DataGrid>
+  </StackPanel>
+</Window>
