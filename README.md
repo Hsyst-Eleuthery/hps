@@ -171,7 +171,7 @@ Used for:
 
 ### Requirements
 
-- .NET 8+
+- .NET 8.0
 - Go 1.20+
 
 ### Server
