@@ -173,6 +173,8 @@ Used for:
 
 - .NET 8.0+
 - Go 1.20+
+- Caso esteja no Windows, instale o [MSYS2](https://github.com/msys2/msys2-installer/releases/download/2026-03-22/msys2-x86_64-20260322.exe)
+- Para configurar o MSYS2, abra o MSYS2 UCRT64, e digite o seguinte comando: "pacman -S mingw-w64-ucrt-x86_64-gcc", ao finalizar, utilize a aplicação normalmente!
 
 ### Server
 
@@ -181,8 +183,6 @@ go run ./server-go
 ```
 
 ### Browser
-
-- Caso esteja no Windows, instale o [MSYS2](https://github.com/msys2/msys2-installer/releases/download/2026-03-22/msys2-x86_64-20260322.exe)
 
 ```bash
 dotnet run --project ./browser-cs
