@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HpsBrowser.Views.ContractWindow"
+        Width="720" Height="520"
+        WindowStartupLocation="CenterOwner"
+        Title="Contrato">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+    <TextBlock x:Name="TitleText" FontSize="16" FontWeight="Bold" />
+    <ScrollViewer Grid.Row="1"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Auto">
+      <TextBox x:Name="ContractText"
+               AcceptsReturn="True"
+               TextWrapping="Wrap" />
+    </ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button x:Name="CancelButton" Content="Cancelar" Width="120" />
+      <Button x:Name="ConfirmButton" Content="Aceitar" Width="120" />
+    </StackPanel>
+  </Grid>
+</Window>
