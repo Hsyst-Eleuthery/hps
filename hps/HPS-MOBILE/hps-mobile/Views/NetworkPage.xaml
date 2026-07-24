@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.NetworkPage"
+             Title="Rede"
+             BackgroundColor="#1A0A2E">
+
+    <ScrollView>
+        <StackLayout Padding="15" Spacing="15">
+
+            <!-- DNS Registration -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#7C3AED" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Registro DNS" TextColor="White" FontSize="18" FontAttributes="Bold" />
+                    <Label Text="Registre um domínio HPS (ex: meusite.hps)"
+                           TextColor="#9CA3AF" FontSize="12" />
+                    <Entry x:Name="DomainEntry"
+                           Placeholder="meudominio.hps"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E" />
+                    <Entry x:Name="DnsContentEntry"
+                           Placeholder="Hash de conteudo ou URL"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E" />
+                    <Button Text="Registrar DNS"
+                            BackgroundColor="#7C3AED" TextColor="White"
+                            FontAttributes="Bold" HeightRequest="45" CornerRadius="10"
+                            Clicked="OnRegisterDns" />
+                    <Label x:Name="DnsStatusLabel" Text="" TextColor="#FBBF24" FontSize="12" />
+                </StackLayout>
+            </Border>
+
+            <!-- DNS Resolution -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Resolver DNS" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Entry Grid.Column="0" x:Name="ResolveEntry"
+                               Placeholder="dominio.hps"
+                               PlaceholderColor="#6B7280"
+                               TextColor="White"
+                               BackgroundColor="#1A0A2E"
+                               ReturnType="Go"
+                               Completed="OnResolveCompleted" />
+                        <Button Grid.Column="1" Text="Ir"
+                                BackgroundColor="#7C3AED" TextColor="White"
+                                WidthRequest="50" HeightRequest="40" CornerRadius="8"
+                                Clicked="OnResolveClicked" />
+                    </Grid>
+                    <Label x:Name="ResolveResultLabel" Text="" TextColor="#9CA3AF" FontSize="11" />
+                </StackLayout>
+            </Border>
+
+            <!-- Content Upload -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#7C3AED" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Publicar Conteudo" TextColor="White" FontSize="18" FontAttributes="Bold" />
+                    <Label Text="Selecione um arquivo para publicar na rede."
+                           TextColor="#9CA3AF" FontSize="12" />
+                    <Entry x:Name="UploadTitleEntry"
+                           Placeholder="Titulo (opcional)"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Grid.Column="0" x:Name="UploadFileLabel"
+                               Text="Nenhum arquivo selecionado"
+                               TextColor="#6B7280" FontSize="12"
+                               VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="Selecionar"
+                                BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                                HeightRequest="36" CornerRadius="8"
+                                BorderColor="#7C3AED"
+                                Clicked="OnSelectFile" />
+                    </Grid>
+                    <Button x:Name="PublishButton"
+                            Text="Publicar"
+                            BackgroundColor="#7C3AED" TextColor="White"
+                            FontAttributes="Bold" HeightRequest="45" CornerRadius="10"
+                            IsEnabled="False"
+                            Clicked="OnPublishClicked" />
+                    <Label x:Name="UploadStatusLabel" Text="" TextColor="#FBBF24" FontSize="12" />
+                </StackLayout>
+            </Border>
+
+            <!-- Network Nodes -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Nos da Rede" TextColor="White" FontSize="18" FontAttributes="Bold" />
+                        <Button Grid.Column="1" Text="Sincronizar"
+                                BackgroundColor="#7C3AED" TextColor="White"
+                                FontSize="11" HeightRequest="32" CornerRadius="8"
+                                Clicked="OnSyncNetwork" />
+                    </Grid>
+                    <Border BackgroundColor="#1A0A2E" Stroke="#3D1A6E"
+                            StrokeShape="RoundRectangle 8" Padding="10"
+                            MinimumHeightRequest="120">
+                        <Label x:Name="NetworkLabel"
+                               Text="Clique em 'Sincronizar' para listar os nos da rede."
+                               TextColor="#9CA3AF" FontSize="11"
+                               FontFamily="monospace" />
+                    </Border>
+                </StackLayout>
+            </Border>
+
+        </StackLayout>
+    </ScrollView>
+
+</ContentPage>
