@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.BrowserPage"
+             Title="Navegador"
+             BackgroundColor="#1A0A2E"
+             Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="0">
+
+        <!-- URL Bar -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Padding="8,8" BackgroundColor="#2D1B4E" ColumnSpacing="6">
+            <Button Grid.Column="0" x:Name="BackBtn" Text="◀" BackgroundColor="#3D1A6E"
+                    TextColor="White" WidthRequest="44" HeightRequest="40" CornerRadius="8"
+                    Clicked="OnBack" />
+            <Entry Grid.Column="1" x:Name="UrlEntry"
+                   Placeholder="hps://rede"
+                   PlaceholderColor="#6B7280"
+                   TextColor="White"
+                   BackgroundColor="#1A0A2E"
+                   FontSize="13"
+                   ReturnType="Go"
+                   Completed="OnUrlSubmitted" />
+            <Button Grid.Column="2" Text="Ir" BackgroundColor="#7C3AED"
+                    TextColor="White" WidthRequest="50" HeightRequest="40" CornerRadius="8"
+                    Clicked="OnGo" />
+        </Grid>
+
+        <!-- Toolbar (icon-based) -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" BackgroundColor="#1A0A2E" Padding="4,4" ColumnSpacing="3">
+            <Button Grid.Column="0" Text="↻" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="18" HeightRequest="42" CornerRadius="8" Clicked="OnReload" />
+            <Button Grid.Column="1" Text="⌂" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="18" HeightRequest="42" CornerRadius="8" Clicked="OnHome" />
+            <Button Grid.Column="2" Text="⌕" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="18" HeightRequest="42" CornerRadius="8" Clicked="OnSearch" />
+            <Button Grid.Column="3" Text="★" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="18" HeightRequest="42" CornerRadius="8" Clicked="OnBookmarks" />
+            <Button Grid.Column="4" Text="✚" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="18" HeightRequest="42" CornerRadius="8" Clicked="OnSave" />
+        </Grid>
+
+        <!-- Content Area -->
+        <ScrollView Grid.Row="2" x:Name="ContentScroll">
+            <StackLayout Spacing="0">
+                <!-- Security banner -->
+                <Border x:Name="SecurityFrame" BackgroundColor="#065F46"
+                        StrokeThickness="0" Padding="10" IsVisible="False">
+                    <Label x:Name="SecurityLabel" Text="" TextColor="White" FontSize="12" />
+                </Border>
+
+                <!-- Text content -->
+                <Label x:Name="ContentLabel" Text="" TextColor="White"
+                       FontSize="14" Padding="12" IsVisible="False"
+                       FontFamily="monospace" />
+
+                <!-- Image content -->
+                <Image x:Name="ContentImage" IsVisible="False"
+                       Aspect="AspectFit" MaximumHeightRequest="400" />
+
+                <!-- Error / status -->
+                <Label x:Name="StatusLabel" Text="Pronto"
+                       TextColor="#9CA3AF" FontSize="12"
+                       HorizontalOptions="Center" Padding="12" />
+            </StackLayout>
+        </ScrollView>
+
+    </Grid>
+
+</ContentPage>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.SettingsPage"
+             Title="Configuracoes"
+             BackgroundColor="#1A0A2E">
+
+    <ScrollView>
+        <StackLayout Padding="15" Spacing="15">
+
+            <!-- Status -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#7C3AED" Padding="15">
+                <StackLayout Spacing="8">
+                    <Label Text="Status da Conexao" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Label x:Name="ConnectionStatusLabel"
+                           Text="Conectado"
+                           TextColor="#34D399" FontSize="14" />
+                    <Label x:Name="UserInfoLabel"
+                           Text=""
+                           TextColor="#9CA3AF" FontSize="12" />
+                    <Label x:Name="ServerInfoLabel"
+                           Text=""
+                           TextColor="#9CA3AF" FontSize="12" />
+                    <Button Text="Desconectar"
+                            BackgroundColor="#DC2626" TextColor="White"
+                            FontAttributes="Bold" HeightRequest="45" CornerRadius="10"
+                            Clicked="OnDisconnectClicked" />
+                </StackLayout>
+            </Border>
+
+            <!-- Preferences -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Preferencias" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Auto-assinar Pendencias"
+                               TextColor="#C084FC" VerticalOptions="Center" FontSize="14" />
+                        <Switch Grid.Column="1" x:Name="AutoSignSwitch"
+                                ThumbColor="#7C3AED" OnColor="#3D1A6E"
+                                Toggled="OnAutoSignToggled" />
+                    </Grid>
+                </StackLayout>
+            </Border>
+
+            <!-- Key Management -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Chaves Criptograficas" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Label x:Name="KeyInfoLabel"
+                           Text=""
+                           TextColor="#9CA3AF" FontSize="12" />
+                    <Button Text="Exportar Chaves"
+                            BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                            HeightRequest="40" CornerRadius="8"
+                            BorderColor="#7C3AED"
+                            Clicked="OnExportKeysClicked" />
+                </StackLayout>
+            </Border>
+
+            <!-- Info -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="6">
+                    <Label Text="Sobre" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Label Text="HPS Mobile v2.0" TextColor="#9CA3AF" FontSize="12" />
+                    <Label Text="Navegador Peer-to-Peer Hsyst" TextColor="#9CA3AF" FontSize="12" />
+                    <Label Text="Rede descentralizada de conteudo e economia" TextColor="#6B7280" FontSize="11" />
+                </StackLayout>
+            </Border>
+
+        </StackLayout>
+    </ScrollView>
+
+</ContentPage>
