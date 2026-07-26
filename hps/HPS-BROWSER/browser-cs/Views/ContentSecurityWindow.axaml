@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HpsBrowser.Views.ContentSecurityWindow"
+        Width="720" Height="620"
+        WindowStartupLocation="CenterOwner"
+        Title="Segurança do Conteúdo">
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="10">
+      <TextBlock Text="Verificação de Segurança do Conteúdo" FontSize="16" FontWeight="Bold" />
+      <TextBlock x:Name="StatusText" FontSize="12" FontWeight="Bold" />
+
+      <Border Background="#1E1E1E" Padding="8" CornerRadius="6">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Detalhes do Conteúdo" FontWeight="Bold" />
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="4">
+            <TextBlock Text="Título:" Grid.Row="0" Grid.Column="0" />
+            <TextBox x:Name="TitleText" Grid.Row="0" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" />
+            <TextBlock Text="Descrição:" Grid.Row="1" Grid.Column="0" />
+            <TextBox x:Name="DescriptionText" Grid.Row="1" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" />
+            <TextBlock Text="Autor:" Grid.Row="2" Grid.Column="0" />
+            <TextBlock x:Name="AuthorText" Grid.Row="2" Grid.Column="1" />
+            <TextBlock Text="Dono:" Grid.Row="3" Grid.Column="0" />
+            <TextBlock x:Name="OwnerText" Grid.Row="3" Grid.Column="1" />
+            <TextBlock Text="Hash:" Grid.Row="4" Grid.Column="0" />
+            <TextBlock x:Name="HashText" Grid.Row="4" Grid.Column="1" />
+            <TextBlock Text="MIME:" Grid.Row="5" Grid.Column="0" />
+            <TextBlock x:Name="MimeText" Grid.Row="5" Grid.Column="1" />
+            <TextBlock Text="Tamanho:" Grid.Row="6" Grid.Column="0" />
+            <TextBlock x:Name="SizeText" Grid.Row="6" Grid.Column="1" />
+            <TextBlock Text="Reputação:" Grid.Row="7" Grid.Column="0" />
+            <TextBlock x:Name="ReputationText" Grid.Row="7" Grid.Column="1" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E1E" Padding="8" CornerRadius="6">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Assinatura Digital" FontWeight="Bold" />
+          <TextBlock Text="Chave Pública:" />
+          <TextBox x:Name="PublicKeyText" AcceptsReturn="True" Height="80" IsReadOnly="True" />
+          <TextBlock Text="Assinatura:" />
+          <TextBox x:Name="SignatureText" AcceptsReturn="True" Height="60" IsReadOnly="True" />
+          <TextBlock x:Name="CertifierText" />
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E1E" Padding="8" CornerRadius="6">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Contratos Relacionados" FontWeight="Bold" />
+          <TextBox x:Name="ContractsText" AcceptsReturn="True" Height="120" IsReadOnly="True" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="Fechar" x:Name="CloseButton" Width="120" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
