@@ -3,6 +3,7 @@
 > A federated P2P infrastructure for publishing, digital contracts, identity, decentralized DNS, and native economy — with no central authority.
 
 ---
+
 > **[Leia em Português (Brasil)](README.pt-BR.md)**
 
 ---
@@ -76,17 +77,23 @@ All without a central authority.
 ### Server (Go)
 Handles storage, contracts and sync.
 
-### Browser (C#)
-User interface and navigation.
+### Browser (C# — Avalonia UI)
+User interface and navigation. Desktop application for Windows and Linux.
+
+### Mobile (C# — .NET MAUI)
+Android client for browsing, login, wallet, and network operations.
 
 ### CLI (C#)
 Advanced interaction and automation.
 
+### Wallet (C# — .NET MAUI)
+Standalone Android wallet for HPS token management with barcode scanning.
+
 ### Miner (Optional)
-Generates vouchers (Proof-of-Work).
+Generates vouchers (Proof-of-Work). Can run as GUI or CLI mode.
 
 ### Proxy (Optional)
-Improves network communication.
+Improves network communication via local caching.
 
 ---
 
@@ -171,8 +178,9 @@ Used for:
 
 ### Requirements
 
-- .NET 8.0+
-- Go 1.20+
+- .NET 8.0+ (for Browser, CLI, Miner)
+- .NET 10.0+ (for Mobile, Wallet)
+- Go 1.25+ (for Server, Proxy)
 - Caso esteja no Windows, instale o [MSYS2](https://github.com/msys2/msys2-installer/releases/download/2026-03-22/msys2-x86_64-20260322.exe)
 - Para configurar o MSYS2, abra o MSYS2 UCRT64, e digite o seguinte comando: "pacman -S mingw-w64-ucrt-x86_64-gcc"
 - Ao finalizar, adicione o diretório "C:\msys64\ucrt64\bin" a sua PATH do Windows
@@ -181,25 +189,50 @@ Used for:
 ### Server
 
 ```bash
-go run ./server-go
+cd HPS-SERVER/server-go
+go run main.go
 ```
 
 ### Browser
 
 ```bash
-dotnet run --project ./browser-cs
+cd HPS-BROWSER/browser-cs
+dotnet run --project HpsBrowser.csproj
 ```
 
 ### CLI
 
 ```bash
-dotnet run --project ./hps-cli
+cd HPS-CLI/HPS-CLI
+dotnet run --project HPS.Cli.csproj
+```
+
+### Mobile
+
+```bash
+cd HPS-MOBILE/hps-mobile
+dotnet build -f net10.0-android
+```
+
+### Wallet
+
+```bash
+cd HPS-WALLET/hps-wallet
+dotnet build -f net10.0-android
 ```
 
 ### Miner
 
 ```bash
-dotnet run --project ./hps-miner
+cd HPS-MINER/hps-miner
+dotnet run --project HpsMiner.csproj
+```
+
+### Proxy
+
+```bash
+cd HPS-PROXY/hps-proxy
+go run ./cmd
 ```
 
 ---
@@ -208,14 +241,14 @@ dotnet run --project ./hps-miner
 
 ```
 HPS/
-├── browser-cs/
-├── server-go/
-├── hps-cli/
-├── hps-miner/
-├── hps-proxy/
+├── HPS-BROWSER/browser-cs/       # Desktop client (Avalonia UI, .NET 8)
+├── HPS-MOBILE/hps-mobile/         # Android client (.NET MAUI, .NET 10)
+├── HPS-WALLET/hps-wallet/         # Android wallet (.NET MAUI, .NET 10)
+├── HPS-CLI/HPS-CLI/               # Command-line interface (.NET 8)
+├── HPS-MINER/hps-miner/           # PoW miner (Avalonia UI + CLI, .NET 8)
+├── HPS-SERVER/server-go/          # Backend server (Go)
+├── HPS-PROXY/hps-proxy/           # HTTP proxy with caching (Go)
 ```
-
----
 
 ## Philosophy
 
