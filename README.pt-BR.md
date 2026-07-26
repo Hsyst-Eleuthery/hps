@@ -1,59 +1,58 @@
 # Hsyst Peer-to-Peer Service (HPS)
 
-> **[Read in English](README.md)**
+> Uma infraestrutura P2P federada para publicação, contratos digitais, identidade, DNS descentralizado e economia nativa — sem autoridade central.
+
+---
+
+> **[Read in English)](README.md)**
 
 ---
 
 > **[Leia o Manual Técnico (Português do Brasil)](https://github.com/Hsyst-Eleuthery/hps/blob/main/docs/tecnico.md)**
 
 ---
-> Uma infraestrutura P2P federada para publicação, contratos digitais, identidade, DNS descentralizado e economia nativa — sem autoridade central.
 
----
-
-## Screenshots
+## Capturas de tela
 
 <table>
-  <tr>
-    <td><img src="docs/images/images1.PNG" width="400"></td>
-    <td><img src="docs/images/images2.png" width="400"></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/images3.png" width="400"></td>
-    <td><img src="docs/images/images4.png" width="400"></td>
-  </tr>
+<tr>
+<td><img src="docs/images/images1.PNG" width="400"></td>
+<td><img src="docs/images/images2.png" width="400"></td>
+</tr>
+<tr>
+<td><img src="docs/images/images3.png" width="400"></td>
+<td><img src="docs/images/images4.png" width="400"></td>
+</tr>
 </table>
 
 ---
 
 ## ⚠️ AVISO
 
-- Este projeto **não é totalmente de código aberto**. Por favor, leia a [licença](LICENSE.md) antes de executar ou replicar.
+- Este projeto **não é totalmente de código aberto (open-source)**. Por favor, revise a [licença](LICENSE.md) antes de executar ou replicar o projeto.
+- É a sua primeira vez usando? Nossos servidores oficiais são:
 
-- Primeira vez usando? Nossos servidores oficiais são:
-
-| Prioridade | Servidor | Protocolo |
-|----------|--------|----------|
-| Primário | `https://server2.hps.hsyst.org` | HTTPS/TLS |
-| Backup 1 | `http://server1.hps.hsyst.org` | HTTP (Backup de HTTPS/TLS) |
+| Prioridade | Servidor | Protocolo | 
+|----------|--------|----------| 
+| Principal | `https://server2.hps.hsyst.org` | HTTPS/TLS | 
+| Backup 1 | `http://server1.hps.hsyst.org` | HTTP (Backup do HTTPS/TLS) | 
 | Backup 2 | `http://server3.hps.hsyst.org` | HTTP (Backup do Backup) |
 
-- Você pode testar a conexão usando a URL "thais.hps" ou "6dd7e54839da3f054e601af886b62f747aba300673bf2f2a9c224e680793382a"
+- Você pode testar a conexão abrindo a URL "thais.hps" ou "6dd7e54839da3f054e601af886b62f747aba300673bf2f2a9c224e680793382a"
 
 ---
 
-## Download
-Caso queira realizar o download, temos uma versão compilada para Windows e Linux!
-- [Clique aqui!](https://github.com/Hsyst-Eleuthery/hps/releases)
+# Download
+Se você deseja fazer o download, temos uma versão compilada para Windows e Linux! - [Clique aqui!](https://github.com/Hsyst-Eleuthery/hps/releases)
 
 ---
 
 ## Visão Geral
 
-O HPS é uma **plataforma peer-to-peer federada** que permite aos usuários:
+O HPS é uma **plataforma federada ponto a ponto (P2P)** que permite aos usuários:
 
 - Publicar conteúdo
-- Possuir identidades digitais
+- Possuir identidades próprias
 - Usar domínios `hps://`
 - Criar e verificar contratos
 - Transferir valor (vouchers)
@@ -64,87 +63,91 @@ Tudo isso sem uma autoridade central.
 
 ## Objetivos
 
-- Controle do usuário sobre os dados  
-- Sem censura oculta  
-- Ações transparentes  
-- Sistema verificável  
+- Controle dos dados pelo usuário
+- Ausência de censura oculta
+- Ações transparentes
+- Sistema verificável
 
 ---
 
 ## Arquitetura
 
-### Server (Go)
-Responsável por armazenamento, contratos e sincronização.
+### Servidor (Go)
+Gerencia armazenamento, contratos e sincronização.
 
-### Browser (C#)
-Interface do usuário e navegação.
+### Navegador (C# — Avalonia UI)
+Interface do usuário e navegação. Aplicativo desktop para Windows e Linux.
+
+### Dispositivos Móveis (C# — .NET MAUI)
+Cliente Android para navegação, login, carteira e operações de rede.
 
 ### CLI (C#)
 Interação avançada e automação.
 
-### Miner (Opcional)
-Gera vouchers (Proof-of-Work).
+### Carteira (C# — .NET MAUI)
+Carteira Android independente para gerenciamento de tokens HPS, com leitura de código de barras.
+
+### Minerador (Opcional)
+Gera vouchers (Prova de Trabalho/PoW). Pode ser executado em modo GUI ou CLI.
 
 ### Proxy (Opcional)
-Melhora a comunicação da rede.
+Melhora a comunicação na rede por meio de cache local.
 
 ---
 
 ## Modelo de Rede
 
-- Não há servidor central  
-- Múltiplos servidores independentes  
-- Usuários podem trocar de servidor livremente  
-- A identidade é portátil  
+- Sem servidor central
+- Múltiplos servidores
+- Usuários podem alternar livremente
+- Identidade portátil
 
 ---
 
 ## Modelo de Segurança
 
-- Identidade baseada em chave pública/privada  
-- Ações assinadas  
-- Verificação automática  
+- Identidade baseada em chaves pública/privada
+- Ações assinadas
+- Verificação automática
 
 ---
 
 ## Sistema de Contratos
 
-Tudo importante é um contrato:
+Tudo o que é importante é um contrato:
 
-- Uploads  
-- Transferências  
-- Domínios  
+- Uploads
+- Transferências
+- Domínios
 
-Sem contrato = sem confiança.
-
----
+Sem contrato = sem confiança. ---
 
 ## Conteúdo Distribuído
 
 Os arquivos são armazenados com:
 
-- Hash  
-- Assinatura  
-- Histórico  
+- Hash
+- Assinatura
+- História
 
 ---
 
-## DNS Descentralizado
+## DNS descentralizado
 
 ```
-hps://example.site
+hps://exemplo.site
 ```
 
-- Domínios com dono  
-- Transferíveis  
-- Sem registrador  
+- Domínios próprios
+- Transferível
+- Sem registrador
 
 ---
 
-## Sistema de Reputação
+## Sistema de reputação
 
-- Afeta o uso  
-- Dinâmico e visível  
+- Afeta o uso
+- Dinâmico e visível
 
 ---
 
@@ -152,18 +155,18 @@ hps://example.site
 
 Usado para:
 
-- Uploads  
-- Contratos  
-- Domínios  
-- Anti-spam  
+- Envios
+- Contratos
+- Domínios
+- Antispam
 
 ---
 
-## Interface do Browser
+##Interface do navegador
 
-- Navegação  
-- Alertas  
-- Verificação  
+- Navegação
+- Alertas
+- Verificação
 
 ---
 
@@ -171,31 +174,61 @@ Usado para:
 
 ### Requisitos
 
-- .NET 8+
-- Go 1.20+
+- .NET 8.0+ (para navegador, CLI, minerador)
+- .NET 10.0+ (para celular, carteira)
+- Vá para 1,25+ (para servidor, proxy)
+- Caso você esteja no Windows, instale o [MSYS2](https://github.com/msys2/msys2-installer/releases/download/2026-03-22/msys2-x86_64-20260322.exe)
+- Para configurar o MSYS2, abra o MSYS2 UCRT64, e digite o seguinte comando: "pacman -S mingw-w64-ucrt-x86_64-gcc"
+- Ao finalizar, adicione o diretório "C:\msys64\ucrt64\bin" ao seu PATH do Windows
+- Utilize uma aplicação normalmente!
 
 ### Servidor
 
 ```bash
-go run ./server-go
+cd HPS-SERVER/server-go
+go run main.go
 ```
 
-### Browser
+### Navegador
 
 ```bash
-dotnet run --project ./browser-cs
+cd HPS-BROWSER/browser-cs
+dotnet run --project HpsBrowser.csproj
 ```
 
 ### CLI
 
 ```bash
-dotnet run --project ./hps-cli
+cd HPS-CLI/HPS-CLI
+dotnet run --project HPS.Cli.csproj
 ```
 
-### Miner
+### Mobile
 
 ```bash
-dotnet run --project ./hps-miner
+cd HPS-MOBILE/hps-mobile
+dotnet build -f net10.0-android
+```
+
+### Carteira
+
+```bash
+cd HPS-WALLET/hps-wallet
+dotnet build -f net10.0-android
+```
+
+### Minerador
+
+```bash
+cd HPS-MINER/hps-miner
+dotnet run --project HpsMiner.csproj
+```
+
+### Proxy
+
+```bash
+cd HPS-PROXY/hps-proxy
+go run ./cmd
 ```
 
 ---
@@ -204,28 +237,28 @@ dotnet run --project ./hps-miner
 
 ```
 HPS/
-├── browser-cs/
-├── server-go/
-├── hps-cli/
-├── hps-miner/
-├── hps-proxy/
+├── HPS-BROWSER/browser-cs/       # Cliente desktop (Avalonia UI, .NET 8)
+├── HPS-MOBILE/hps-mobile/         # Cliente Android (.NET MAUI, .NET 10)
+├── HPS-WALLET/hps-wallet/         # Carteira Android (.NET MAUI, .NET 10)
+├── HPS-CLI/HPS-CLI/               # Interface de linha de comando (.NET 8)
+├── HPS-MINER/hps-miner/           # Minerador PoW (Avalonia UI + CLI, .NET 8)
+├── HPS-SERVER/server-go/          # Servidor backend (Go)
+├── HPS-PROXY/hps-proxy/           # Proxy HTTP com cache (Go)
 ```
-
----
 
 ## Filosofia
 
-- Nada é confiável por padrão  
-- Tudo deve ser verificável  
+- Nada é confiável por padrão
+- Tudo é verificável
 
 ---
 
-## Licença & Créditos
+## Licença e Créditos
 
 Criado por [Thaís](https://github.com/op3ny).
 
 ---
 
 <p align="center">
-  <strong>HPS — Descentralizado. Verificável. Soberano.</strong>
+<strong>HPS — Descentralizado. Verificável. Soberano.</strong>
 </p>
