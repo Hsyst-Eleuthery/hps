@@ -12,6 +12,10 @@
 
 ---
 
+> **[Leia o Guia de Usuário em Português do Brasil](https://github.com/Hsyst-Eleuthery/hps/blob/main/docs/userguide.md)**
+
+---
+
 ## Capturas de tela
 
 <table>
