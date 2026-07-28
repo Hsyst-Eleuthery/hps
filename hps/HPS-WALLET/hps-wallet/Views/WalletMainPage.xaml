@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
+             x:Class="HpsWallet.Views.WalletMainPage"
+             x:Name="ThisPage"
+             Title="HPS Wallet"
+             BackgroundColor="#1A0A2E"
+             Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="0">
+
+        <!-- Top Bar (Balance + User) -->
+        <Frame Grid.Row="0" CornerRadius="0" BackgroundColor="#2D1B4E"
+               BorderColor="#7C3AED" Padding="10" Margin="0" HasShadow="False">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label Grid.Column="0" Text="$HPS" TextColor="#C084FC" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                <StackLayout Grid.Column="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="2">
+                    <Label x:Name="BalanceLabel" Text="0.00 $HPS" TextColor="White" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" />
+                    <Label x:Name="UserLabel" Text="" TextColor="#9CA3AF" FontSize="10" HorizontalOptions="Center" />
+                </StackLayout>
+                <Button Grid.Column="2" Text="Atualizar" TextColor="#7C3AED" BackgroundColor="Transparent" FontSize="12" Clicked="OnRefreshClicked" />
+            </Grid>
+        </Frame>
+
+        <!-- Tab Buttons -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" BackgroundColor="#1A0A2E" Padding="0" ColumnSpacing="1">
+            <Button x:Name="TabSendBtn" Text="Enviar" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="11" HeightRequest="40" CornerRadius="0" BorderWidth="0"
+                    Clicked="OnTabClicked" />
+            <Button x:Name="TabReceiveBtn" Grid.Column="1" Text="Receber" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="11" HeightRequest="40" CornerRadius="0" BorderWidth="0"
+                    Clicked="OnTabClicked" />
+            <Button x:Name="TabScanBtn" Grid.Column="2" Text="Escanear" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="11" HeightRequest="40" CornerRadius="0" BorderWidth="0"
+                    Clicked="OnTabClicked" />
+            <Button x:Name="TabPendingBtn" Grid.Column="3" Text="Pendentes" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="11" HeightRequest="40" CornerRadius="0" BorderWidth="0"
+                    Clicked="OnTabClicked" />
+            <Button x:Name="TabHistoryBtn" Grid.Column="4" Text="Historico" BackgroundColor="#2D1B4E" TextColor="#C084FC"
+                    FontSize="11" HeightRequest="40" CornerRadius="0" BorderWidth="0"
+                    Clicked="OnTabClicked" />
+        </Grid>
+
+        <!-- Content Panels -->
+        <Grid Grid.Row="2">
+            <!-- Send Panel -->
+            <ScrollView x:Name="SendPanel" IsVisible="True">
+                <StackLayout Padding="10" Spacing="15">
+                    <Frame BackgroundColor="#2D1B4E" BorderColor="#7C3AED" CornerRadius="15" Padding="15">
+                        <StackLayout Spacing="10">
+                            <Label Text="Enviar $HPS" TextColor="White" FontSize="20" FontAttributes="Bold" />
+                            <Label Text="Modelo burn-on-spend: o valor sera queimado ao ser enviado." TextColor="#F59E0B" FontSize="11" />
+                            <Entry x:Name="SendRecipient"
+                                   Placeholder="Destinatario (usuario)"
+                                   PlaceholderColor="#9CA3AF" TextColor="White" BackgroundColor="#1A0A2E" />
+                            <Entry x:Name="SendAmount"
+                                   Placeholder="Valor ($HPS)"
+                                   PlaceholderColor="#9CA3AF" TextColor="White" BackgroundColor="#1A0A2E" Keyboard="Numeric" />
+                            <Button Text="Enviar $HPS" BackgroundColor="#7C3AED" TextColor="White" FontAttributes="Bold" HeightRequest="50" CornerRadius="12" Clicked="OnSendClicked" />
+                        </StackLayout>
+                    </Frame>
+                </StackLayout>
+            </ScrollView>
+
+            <!-- Receive Panel -->
+            <ScrollView x:Name="ReceivePanel" IsVisible="False">
+                <StackLayout Padding="10" Spacing="15">
+                    <Frame BackgroundColor="#2D1B4E" BorderColor="#7C3AED" CornerRadius="15" Padding="15">
+                        <StackLayout Spacing="10" HorizontalOptions="Center">
+                            <Label Text="Seu Endereco" TextColor="White" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" />
+                            <Label x:Name="MyAddressLabel" TextColor="#C084FC" FontSize="14" HorizontalOptions="Center" />
+                            <Button Text="Copiar Endereco" BackgroundColor="#7C3AED" TextColor="White" HeightRequest="45" CornerRadius="10" Clicked="OnCopyAddressClicked" />
+                        </StackLayout>
+                    </Frame>
+                    <Frame BackgroundColor="#2D1B4E" BorderColor="#10B981" CornerRadius="15" Padding="15">
+                        <StackLayout Spacing="10" HorizontalOptions="Center">
+                            <Label Text="Gerar QR de Recebimento" TextColor="White" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                            <Label Text="Defina o valor e gere um QR para receber pagamento" TextColor="#9CA3AF" FontSize="12" HorizontalOptions="Center" />
+                            <Entry x:Name="QrAmountEntry"
+                                   Placeholder="Valor ($HPS)"
+                                   PlaceholderColor="#6B7280" TextColor="White" BackgroundColor="#1A0A2E"
+                                   Keyboard="Numeric" HorizontalOptions="Fill" />
+                            <Button x:Name="GenerateQrButton" Text="Gerar QR" BackgroundColor="#10B981" TextColor="White"
+                                    FontAttributes="Bold" HeightRequest="45" CornerRadius="10"
+                                    Clicked="OnGenerateQrClicked" HorizontalOptions="Fill" />
+                            <GraphicsView x:Name="QrGraphicsView" HeightRequest="220" WidthRequest="220"
+                                          HorizontalOptions="Center" IsVisible="False" />
+                            <Label x:Name="QrDataLabel" Text="" TextColor="#6B7280" FontSize="9" HorizontalOptions="Center" IsVisible="False" />
+                            <Button x:Name="CopyQrButton" Text="Copiar Dados do QR" BackgroundColor="#3D1A6E" TextColor="#C084FC"
+                                    HeightRequest="36" CornerRadius="8" IsVisible="False"
+                                    Clicked="OnCopyQrDataClicked" />
+                        </StackLayout>
+                    </Frame>
+                </StackLayout>
+            </ScrollView>
+
+            <!-- Scan Panel -->
+            <Grid x:Name="ScanPanel" IsVisible="False" Padding="0">
+                <Grid RowDefinitions="*,Auto" Padding="0">
+                    <zxing:CameraBarcodeReaderView x:Name="BarcodeReader"
+                                                    IsDetecting="True"
+                                                    IsVisible="True" />
+                    <Frame Grid.Row="1" BackgroundColor="#2D1B4E" BorderColor="#7C3AED" CornerRadius="15" Padding="15"
+                           Margin="10" HasShadow="False">
+                        <StackLayout Spacing="10">
+                            <Label Text="Escaneie um QR Code"
+                                   TextColor="White" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                            <Label Text="- QR de Voucher: verifica voucher existente"
+                                   TextColor="#9CA3AF" FontSize="11" HorizontalOptions="Center" />
+                            <Label Text="- QR de Pagamento: inicia transferencia"
+                                   TextColor="#9CA3AF" FontSize="11" HorizontalOptions="Center" />
+                            <Label x:Name="ScanResultLabel"
+                                   Text="Aguardando escaneamento..."
+                                   TextColor="#9CA3AF" FontSize="12" HorizontalOptions="Center" />
+                        </StackLayout>
+                    </Frame>
+                </Grid>
+            </Grid>
+
+            <!-- Pending Contracts Panel -->
+            <Grid x:Name="PendingPanel" IsVisible="False" Padding="10">
+                <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="15">
+                    <Frame BackgroundColor="#2D1B4E" BorderColor="#F59E0B" CornerRadius="15" Padding="20" HasShadow="False">
+                        <VerticalStackLayout Spacing="12" HorizontalOptions="Center">
+                            <Label Text="Transferencias Pendentes" TextColor="#FBBF24" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                            <Label x:Name="PendingCountLabel" Text="Nenhuma transferencia pendente" TextColor="#9CA3AF" FontSize="13" HorizontalOptions="Center" />
+                            <Button Text="Ver Pendentes" BackgroundColor="#F59E0B" TextColor="#1A0A2E" FontAttributes="Bold" HeightRequest="48" CornerRadius="12" FontSize="15" Clicked="OnOpenPendingPage" HorizontalOptions="Center" WidthRequest="200" />
+                            <Button Text="Atualizar" BackgroundColor="#3D1A6E" TextColor="#C084FC" HeightRequest="36" CornerRadius="10" FontSize="12" Clicked="OnRefreshPendingClicked" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- History Panel -->
+            <ScrollView x:Name="HistoryPanel" IsVisible="False" Padding="10">
+                <CollectionView x:Name="HistoryCollection">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Frame BackgroundColor="#2D1B4E" BorderColor="#3D1A6E" Padding="12" CornerRadius="10" Margin="0,3" HasShadow="False">
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <Label Grid.Column="0" Text="{Binding Icon}" FontSize="24" VerticalOptions="Center" Margin="0,0,10,0" />
+                                    <StackLayout Grid.Column="1" VerticalOptions="Center">
+                                        <Label Text="{Binding Description}" TextColor="White" FontSize="14" />
+                                        <Label Text="{Binding Date}" TextColor="#9CA3AF" FontSize="10" />
+                                    </StackLayout>
+                                    <Label Grid.Column="2" Text="{Binding Amount}" TextColor="{Binding AmountColor}" FontSize="16" FontAttributes="Bold" VerticalOptions="Center" />
+                                </Grid>
+                            </Frame>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </ScrollView>
+        </Grid>
+    </Grid>
+
+</ContentPage>
