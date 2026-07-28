@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.BanPage"
+             BackgroundColor="#7F1D1D"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
+    <Grid VerticalOptions="Fill" HorizontalOptions="Fill" Padding="30">
+        <Border StrokeShape="RoundRectangle 20" BackgroundColor="#991B1B"
+                Stroke="#FCA5A5" StrokeThickness="2"
+                VerticalOptions="Center" Padding="25">
+            <StackLayout Spacing="16" HorizontalOptions="Center">
+                <Label Text="&#x26A0;" TextColor="#FCA5A5" FontSize="48"
+                       HorizontalOptions="Center" />
+                <Label Text="VOCE FOI BANIDO" TextColor="#FCA5A5" FontSize="22"
+                       FontAttributes="Bold" HorizontalOptions="Center" />
+                <BoxView HeightRequest="1" Color="#FCA5A5" Margin="0,4" />
+                <Label x:Name="ReasonLabel" Text="Razao nao especificada"
+                       TextColor="#FEE2E2" FontSize="15"
+                       HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                <Label x:Name="DurationLabel" Text=""
+                       TextColor="#FECACA" FontSize="13"
+                       HorizontalOptions="Center" />
+                <Button x:Name="DismissButton"
+                        Text="OK"
+                        BackgroundColor="#DC2626" TextColor="White"
+                        FontAttributes="Bold" HeightRequest="45"
+                        CornerRadius="10" WidthRequest="200"
+                        Clicked="OnDismissClicked" />
+            </StackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

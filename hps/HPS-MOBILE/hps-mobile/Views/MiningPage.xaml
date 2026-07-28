@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.MiningPage"
+             Title="Mineração"
+             BackgroundColor="#1A0A2E">
+
+    <ScrollView>
+        <StackLayout Padding="15" Spacing="15">
+
+            <!-- Status Card -->
+            <Border StrokeShape="RoundRectangle 20" BackgroundColor="#2D1B4E"
+                    Stroke="#7C3AED" Padding="20">
+                <StackLayout Spacing="8">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <ActivityIndicator x:Name="MiningSpinner"
+                                           IsRunning="False" IsVisible="False"
+                                           Color="#7C3AED" HeightRequest="20"
+                                           WidthRequest="20" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="Status da Mineração"
+                               TextColor="White" FontSize="20" FontAttributes="Bold"
+                               HorizontalOptions="Center" />
+                    </Grid>
+                    <Label x:Name="MiningStatusLabel"
+                           Text="Pronto"
+                           TextColor="#C084FC" FontSize="16"
+                           HorizontalOptions="Center" />
+                    <Label x:Name="MintStatusLabel"
+                           Text=""
+                           TextColor="#9CA3AF" FontSize="12"
+                           HorizontalOptions="Center" />
+                </StackLayout>
+            </Border>
+
+            <!-- Controls -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#7C3AED" Padding="15">
+                <StackLayout Spacing="12">
+                    <Label Text="Controles" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Button Grid.Column="0" x:Name="MintButton"
+                                Text="Mineração Única"
+                                BackgroundColor="#7C3AED" TextColor="White"
+                                FontAttributes="Bold" HeightRequest="48" CornerRadius="10"
+                                Clicked="OnMintClicked" />
+                        <Button Grid.Column="1" x:Name="StopButton"
+                                Text="Parar"
+                                BackgroundColor="#DC2626" TextColor="White"
+                                HeightRequest="48" WidthRequest="80" CornerRadius="10"
+                                IsVisible="False"
+                                Clicked="OnStopClicked" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Mineração Contínua"
+                               TextColor="#C084FC" VerticalOptions="Center" FontSize="14" />
+                        <Switch Grid.Column="1" x:Name="ContinuousSwitch"
+                                ThumbColor="#7C3AED" OnColor="#3D1A6E"
+                                Toggled="OnContinuousToggled" />
+                    </Grid>
+                    <StackLayout>
+                        <Label x:Name="ThreadsLabel" Text="Threads PoW: 2" TextColor="#9CA3AF" FontSize="12" />
+                        <Slider x:Name="ThreadsSlider"
+                                Minimum="1" Maximum="8" Value="2"
+                                ThumbColor="#7C3AED" MinimumTrackColor="#7C3AED"
+                                MaximumTrackColor="#3D1A6E"
+                                ValueChanged="OnThreadsChanged" />
+                    </StackLayout>
+                </StackLayout>
+            </Border>
+
+            <!-- Statistics -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Label Text="Estatísticas" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="15">
+                        <StackLayout Grid.Row="0" Grid.Column="0">
+                            <Label Text="Status" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatStatusLabel" Text="-" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="0" Grid.Column="1">
+                            <Label Text="Bits" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatBitsLabel" Text="-" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="1" Grid.Column="0">
+                            <Label Text="Hashrate" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatHashrateLabel" Text="0 H/s" TextColor="#34D399" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="1" Grid.Column="1">
+                            <Label Text="Tentativas" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatAttemptsLabel" Text="0" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="2" Grid.Column="0">
+                            <Label Text="Moedas Mineradas" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatCountLabel" Text="0" TextColor="#C084FC" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="2" Grid.Column="1">
+                            <Label Text="Tempo Decorrido" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatElapsedLabel" Text="0.0s" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                        <StackLayout Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+                            <Label Text="Tempo Total" TextColor="#9CA3AF" FontSize="11" />
+                            <Label x:Name="StatTotalTimeLabel" Text="0s" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        </StackLayout>
+                    </Grid>
+                </StackLayout>
+            </Border>
+
+            <!-- Log -->
+            <Border StrokeShape="RoundRectangle 15" BackgroundColor="#2D1B4E"
+                    Stroke="#3D1A6E" Padding="15">
+                <StackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Log da Mineração" TextColor="White" FontSize="16" FontAttributes="Bold" />
+                        <Button Grid.Column="1" Text="Limpar"
+                                BackgroundColor="#3D1A6E" TextColor="#C084FC"
+                                FontSize="11" HeightRequest="32" CornerRadius="8"
+                                Clicked="OnClearLog" />
+                    </Grid>
+                    <Border BackgroundColor="#1A0A2E" Stroke="#3D1A6E"
+                            StrokeShape="RoundRectangle 8" Padding="10"
+                            MinimumHeightRequest="150">
+                        <ScrollView x:Name="LogScroll" Orientation="Vertical">
+                            <Label x:Name="LogLabel"
+                                   Text="Pronto para minerar."
+                                   TextColor="#9CA3AF" FontSize="11"
+                                   FontFamily="monospace" />
+                        </ScrollView>
+                    </Border>
+                </StackLayout>
+            </Border>
+
+        </StackLayout>
+    </ScrollView>
+
+</ContentPage>

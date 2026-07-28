@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="HpsMobile.Views.LoginPage"
+             Title="Entrar na Rede P2P"
+             BackgroundColor="#1A0A2E">
+
+    <ScrollView>
+        <Grid Padding="15" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="15">
+
+            <Frame Grid.Row="0" CornerRadius="20" BackgroundColor="#2D1B4E"
+                   BorderColor="#7C3AED" Padding="20">
+                <StackLayout Spacing="8">
+                    <Label Text="HPS Mobile"
+                           TextColor="White" FontSize="28" FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    <Label Text="Navegador Peer-to-Peer Hsyst"
+                           TextColor="#A78BFA" FontSize="14"
+                           HorizontalOptions="Center" />
+                </StackLayout>
+            </Frame>
+
+            <Frame Grid.Row="1" CornerRadius="15" BackgroundColor="#2D1B4E"
+                   BorderColor="#7C3AED" Padding="15">
+                <StackLayout Spacing="12">
+                    <Label Text="Conexao" TextColor="White" FontSize="18" FontAttributes="Bold" />
+
+                    <Label Text="Servidor (host:porta)" TextColor="#C084FC" FontSize="12" />
+                    <Entry x:Name="ServerEntry"
+                           Placeholder="localhost:8080"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E" />
+
+                    <Label Text="Usuario" TextColor="#C084FC" FontSize="12" />
+                    <Entry x:Name="UsernameEntry"
+                           Placeholder="Seu nome de usuario"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E" />
+
+                    <Label Text="Senha (chave criptografica)" TextColor="#C084FC" FontSize="12" />
+                    <Entry x:Name="PasswordEntry"
+                           Placeholder="Senha da chave"
+                           PlaceholderColor="#6B7280"
+                           TextColor="White"
+                           BackgroundColor="#1A0A2E"
+                           IsPassword="True" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Usar SSL/TLS"
+                               TextColor="#C084FC" VerticalOptions="Center" FontSize="14" />
+                        <Switch Grid.Column="1"
+                                x:Name="SslSwitch"
+                                ThumbColor="#7C3AED"
+                                OnColor="#3D1A6E" />
+                    </Grid>
+
+                    <Button x:Name="ConnectButton"
+                            Text="Entrar na Rede"
+                            BackgroundColor="#7C3AED"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            HeightRequest="50"
+                            CornerRadius="12"
+                            Clicked="OnConnectClicked" />
+
+                    <Label x:Name="StatusLabel"
+                           Text=""
+                           TextColor="#F87171"
+                           FontSize="13"
+                           HorizontalOptions="Center" />
+                </StackLayout>
+            </Frame>
+
+            <Frame Grid.Row="2" CornerRadius="15" BackgroundColor="#2D1B4E"
+                   BorderColor="#7C3AED" Padding="15"
+                   IsVisible="False" x:Name="ProgressFrame">
+                <StackLayout Spacing="6">
+                    <Label x:Name="ProgressTitle"
+                           Text="Conectando..."
+                           TextColor="White" FontSize="15" FontAttributes="Bold" />
+                    <ProgressBar x:Name="ProgressBar"
+                                 Progress="0"
+                                 ProgressColor="#7C3AED" HeightRequest="6" />
+                </StackLayout>
+            </Frame>
+
+            <Frame Grid.Row="3" CornerRadius="15" BackgroundColor="#2D1B4E"
+                   BorderColor="#3D1A6E" Padding="15">
+                <StackLayout Spacing="6">
+                    <Label Text="Servidores recentes"
+                           TextColor="White" FontSize="14" FontAttributes="Bold" />
+                    <Label Text="Toque para preencher o servidor"
+                           TextColor="#6B7280" FontSize="10" />
+                    <Label x:Name="RecentServersLabel"
+                           Text="Nenhum"
+                           TextColor="#9CA3AF" FontSize="13" />
+                </StackLayout>
+            </Frame>
+
+        </Grid>
+    </ScrollView>
+
+</ContentPage>
